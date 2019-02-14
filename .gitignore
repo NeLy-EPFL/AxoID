@@ -1,5 +1,4 @@
 # Data files
-split_data.py
 *.tif
 *.png
 
@@ -11,13 +10,9 @@ split_data.py
 .ipynb_checkpoints
 
 # Pytorch models/checkpoints
-deep_learning/models
+detection/deep_learning/models
 *.pt
 *.pth
 
 # Results
-deep_learning/custom_unet
-deep_learning/synth_data
-computer_vision/results_CV/
-computer_vision/results_CV_old/
-computer_vision/verified_CV/
+
