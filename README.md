@@ -5,3 +5,4 @@ The goal is to detect the ROIs corresponding to axons over 2-photon neuroimaging
 # Repository structure
   * `detection`: code for detecting the ROIs as binary segmentations
   * `tracking`: code for tracking ROIs' identities through time (TODO)
+
