@@ -85,8 +85,8 @@ def synthetic_stack(shape, n_images, n_neurons):
             val, vec = np.linalg.eig(cov)
             rotation = math.atan2(vec[0, np.argmax(val)], vec[1, np.argmax(val)])
             rr, cc = draw.ellipse(mean[1], mean[0], 
-                                  ellipse_size * np.sqrt(cov[1,1]), 
-                                  ellipse_size * np.sqrt(cov[0,0]),
+                                  ellipse_size * np.sqrt(val[1]), 
+                                  ellipse_size * np.sqrt(val[0]),
                                   rotation=rotation)
             # Check if outside the image
             if (rr < 0).any() or (rr >= shape[0]).any() or (cc < 0).any() or (cc >= shape[1]).any():
