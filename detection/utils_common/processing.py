@@ -14,9 +14,9 @@ from skimage import morphology as morph
 from skimage.morphology import disk
 import cv2
 
-from image import to_npint
-from register_cc import register_stack
-from multiprocessing import run_parallel
+from .image import to_npint
+from .register_cc import register_stack
+from .multi_processing import run_parallel
 
 def hline(length):
     """Horizontal line element for morpholgical operations."""

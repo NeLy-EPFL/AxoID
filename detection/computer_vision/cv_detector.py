@@ -14,7 +14,7 @@ from skimage import morphology as morph
 from skimage.morphology import disk
 
 from utils_common.image import to_npint
-from utils_common.multiprocessing import run_parallel
+from utils_common.multi_processing import run_parallel
 from utils_common.register_cc import register_stack, shift_image
 
 
