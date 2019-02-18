@@ -21,7 +21,7 @@ import imgaug.augmenters as iaa
 import torch
 
 from utils_data import get_all_dataloaders, normalize_range
-from utils_loss import get_crop_loss, get_dice_metric, get_crop_dice_metric
+from utils_metric import get_dice_metric, get_crop_dice_metric
 from utils_model import CustomUNet
 from utils_train import train
 from utils_test import evaluate
@@ -143,7 +143,6 @@ def main(args, model=None):
         print("\nModel definition:", model, "\n")
     
     loss_fn = torch.nn.BCEWithLogitsLoss(reduction='elementwise_mean', pos_weight=pos_weight)
-    crop_loss = get_crop_loss(loss_fn, scale=args.scale_crop, device=device)
     
     dice_metric = get_dice_metric()
     diceC_metric = get_crop_dice_metric(scale=args.scale_crop)
@@ -156,8 +155,7 @@ def main(args, model=None):
                                 loss_fn,
                                 optimizer,
                                 args.epochs,
-                                metrics = {"lossC%.1f" % args.scale_crop: crop_loss,
-                                           "dice": dice_metric, 
+                                metrics = {"dice": dice_metric, 
                                            "diC%.1f" % args.scale_crop: diceC_metric},
                                 criterion_metric = "dice",
                                 model_dir = args.model_dir,
@@ -195,7 +193,7 @@ def main(args, model=None):
     ## Evaluate best model over test data
     if args.eval_test:
         test_metrics = evaluate(best_model, dataloaders["test"], 
-                                {"loss": lambda x,y,z: loss_fn(x[z], y[z]), "lossC%.1f" % args.scale_crop: crop_loss,
+                                {"loss": lambda x,y,z: loss_fn(x[z], y[z]),
                                  "dice": dice_metric, "diC%.1f" % args.scale_crop: diceC_metric})
         if args.verbose:
             print("\nTest loss = {}".format(test_metrics["loss"]))
