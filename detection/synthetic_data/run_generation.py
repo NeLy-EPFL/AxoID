@@ -14,7 +14,7 @@ import math
 
 import numpy as np
 import matplotlib.pyplot as plt
-from skimage import io, draw
+from skimage import io, draw, exposure
 from scipy.stats import multivariate_normal
 from imgaug import augmenters as iaa
 
@@ -124,7 +124,7 @@ def synthetic_stack(shape, n_images, n_neurons):
         # Set the warping to deterministic for warping both neurons and segmentation the same way
         seq_det = wrpseq.to_deterministic()
         
-        ## Warp the neurons
+        # Warp the neurons
         for j in range(n_neurons):
             # Warp gaussian defining it
             wrp_gaussian = seq_det.augment_image(neurons[j])
@@ -136,7 +136,7 @@ def synthetic_stack(shape, n_images, n_neurons):
             plt.close()
             wrp_neurons[i] = np.maximum(wrp_neurons[i], hist[0].T / hist[0].max() * max_neurons[j])
             
-        ## Warp the segmentation
+        # Warp the segmentation
         wrp_segs[i] = seq_det.augment_image(neurons_segs)
         # Fill the possible holes in warped segmentation
         # It adds a border of background to avoid the case where a neuron is 
@@ -151,10 +151,9 @@ def synthetic_stack(shape, n_images, n_neurons):
     synth_stack = np.maximum(wrp_neurons, noise)
     synth_seg = wrp_segs
     
-    ## 50% chance of clipping with random value (create a random saturation)
-    if np.random.rand() > 0.5:
-        rand_sat = np.random.uniform(0.5, 1.0)
-        synth_stack = synth_stack.clip(0, rand_sat) / rand_sat
+    ## Random gamma correction (with prior rescaling)
+    gamma = np.random.rand() * 0.6 + 0.7 # in [0.7, 1.3)
+    synth_stack = exposure.adjust_gamma(synth_stack / synth_stack.max(), gamma=gamma)
     
     return synth_stack, synth_seg
 
