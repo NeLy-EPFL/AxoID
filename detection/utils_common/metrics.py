@@ -68,11 +68,11 @@ def crop_metric(metric_fn, predictions, targets, scale=4.0, reduction='mean'):
         labels = measure.label(targets[i])
         # If no true positive region, does not consider the image
         if labels.max() == 0:
-            n_no_positive += 1.0
+            n_no_positive += 1
             continue
         regionprops = measure.regionprops(labels)
         
-        local_metric = 0.0
+        mask = np.zeros(targets[i].shape, dtype=np.bool)
         # Loop over targets' connected regions
         for region in regionprops:
             min_row, min_col, max_row, max_col = region.bbox
@@ -82,11 +82,10 @@ def crop_metric(metric_fn, predictions, targets, scale=4.0, reduction='mean'):
             min_row = int(max(0, min_row - height * (scale-1) / 2))
             max_col = int(min(targets[i].shape[1], max_col + width * (scale-1) / 2))
             min_col = int(max(0, min_col - width * (scale-1) / 2))
-                
-            local_metric += metric_fn(np.array([predictions[i][min_row:max_row, min_col:max_col]]), 
-                                np.array([targets[i][min_row:max_row, min_col:max_col]])) / \
-                            len(regionprops) # Averaging factor for multiple region in same image
-        metric.append(local_metric)
+            mask[min_row:max_row, min_col:max_col] = True
+            
+        metric.append(metric_fn(np.array([predictions[i][mask]]), 
+                                np.array([targets[i][mask]])))
     
     if reduction in ["elementwise_mean", "mean", "ave", "average"]:
         return np.sum(metric) / (len(targets) - n_no_positive)
