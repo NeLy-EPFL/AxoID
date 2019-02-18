@@ -92,9 +92,10 @@ def main(args, model=None):
         synthetic_data = args.synthetic_data,
         synthetic_ratio = args.synthetic_ratio,
         synthetic_only = args.synthetic_only,
-        use_masks = args.use_masks,
-        train_transform = lambda img: normalize_range(pad_transform(aug_fn(img))), train_target_transform = pad_transform,
-        eval_transform = lambda img: normalize_range(pad_transform(img)), eval_target_transform = pad_transform
+        train_transform = lambda img: normalize_range(pad_transform(aug_fn(img))), 
+        train_target_transform = pad_transform,
+        eval_transform = lambda img: normalize_range(pad_transform(img)), 
+        eval_target_transform = pad_transform
     )
     
     N_TRAIN = len(dataloaders["train"].dataset)
@@ -124,8 +125,6 @@ def main(args, model=None):
         print("%d validation images." % N_VALID)
         if args.eval_test:
             print("%d test images." % N_TEST)
-        if args.use_masks:
-            print("Loss masking is enabled.")
         print("{:.3f} positive weighting.".format(pos_weight.item()))
     
     ## Model, loss, and optimizer definition
@@ -166,14 +165,12 @@ def main(args, model=None):
     if args.save_fig and args.model_dir is not None:
         fig = plt.figure(figsize=(8,6))
         plt.subplot(121)
-        plt.title("Loss\n(crop scale = %.1f)" % args.scale_crop)
+        plt.title("Loss" % args.scale_crop)
         plt.plot(history["epoch"], history["loss"], color="C0")
-        plt.plot(history["epoch"], history["lossC%.1f" % args.scale_crop], "--", color="C0")
         plt.plot(history["epoch"], history["val_loss"], color="C1")
-        plt.plot(history["epoch"], history["val_lossC%.1f" % args.scale_crop], "--", color="C1")
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
-        plt.legend(["train loss", "train cropped loss", "valid loss", "valid cropped loss"])
+        plt.legend(["train loss", "valid loss"])
         plt.subplot(122)
         plt.title("Dice coefficients\n(crop scale = %.1f)" % args.scale_crop)
         plt.plot(history["epoch"], history["dice"], color="C0")
@@ -197,7 +194,6 @@ def main(args, model=None):
                                  "dice": dice_metric, "diC%.1f" % args.scale_crop: diceC_metric})
         if args.verbose:
             print("\nTest loss = {}".format(test_metrics["loss"]))
-            print("Crop loss = {}".format(test_metrics["lossC%.1f" % args.scale_crop]))
             print("Test dice = {}".format(test_metrics["dice"]))
             print("Crop dice = {}".format(test_metrics["diC%.1f" % args.scale_crop]))
         
@@ -253,8 +249,8 @@ if __name__ == "__main__":
     parser.add_argument(
             '--input_channels', 
             type=str,
-            default="R", 
-            help="channels of RGB input images to use (default=R)"
+            default="RG", 
+            help="channels of RGB input images to use (default=RG)"
     )
     parser.add_argument(
             '--learning_rate', 
@@ -315,11 +311,6 @@ if __name__ == "__main__":
             '-t', '--timeit', 
             action="store_true",
             help="time the script"
-    )
-    parser.add_argument(
-            '--use_masks', 
-            action="store_true",
-            help="enable the use of loss masking using pre-computed masks"
     )
     parser.add_argument(
             '-v', '--verbose', 

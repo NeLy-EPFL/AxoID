@@ -8,7 +8,6 @@ Created on Mon Oct 22 13:54:19 2018
 """
 
 import os
-import re
 import numpy as np
 
 import torch
@@ -20,8 +19,7 @@ from utils_common.image import imread_to_float
 class ImageLoaderDataset(data.Dataset):
     """Dataset that loads image online for efficient memory usage."""
     
-    def __init__(self, x_filenames, y_filenames, mask_filenames,
-                 input_channels="RGB", 
+    def __init__(self, x_filenames, y_filenames, input_channels="RGB", 
                  transform=None, target_transform=None):
         """
         Args:
@@ -29,8 +27,6 @@ class ImageLoaderDataset(data.Dataset):
                 Contains the filenames/path to the input images.
             y_filenames: list of str
                 Contains the filenames/path to the target images.
-            mask_filenames: list of str
-                Contains the filenames/path to the mask images (or None).
             input_channels: str (default = "RGB")
                 Indicates the channels to load from the input images, e.g. "RG"
                 for Red and Green.
@@ -42,7 +38,6 @@ class ImageLoaderDataset(data.Dataset):
         super(ImageLoaderDataset, self).__init__()
         self.x_filenames = x_filenames
         self.y_filenames = y_filenames
-        self.mask_filenames = mask_filenames
         
         if len(self.x_filenames) != len(self.y_filenames):
             raise ValueError("Not the same number of files in input and target lists (%d != %d)." %
@@ -62,10 +57,6 @@ class ImageLoaderDataset(data.Dataset):
         # Load images to float in range [0,1]
         image = imread_to_float(self.x_filenames[idx], scaling=255)
         target = imread_to_float(self.y_filenames[idx], scaling=255)
-        if self.mask_filenames[idx] is None:
-            mask = np.zeros(target.shape, dtype=np.uint8)
-        else:
-            mask = imread_to_float(self.mask_filenames[idx], scaling=255).astype(np.uint8)
         
         # Keep only relevant input channels
         channel_imgs = {"R": image[:,:,0], "G": image[:,:,1], "B": image[:,:,2]}
@@ -75,43 +66,35 @@ class ImageLoaderDataset(data.Dataset):
             image = self.transform(image)
         if self.target_transform is not None:
             target = self.target_transform(target)
-            mask = self.target_transform(mask)
         
-        return image, target, mask
+        return image, target
 
 
-def get_filenames(data_dir, use_masks=False, 
-                  valid_extensions=('.png', '.jpg', '.jpeg')): 
+def get_filenames(data_dir, valid_extensions=('.png', '.jpg', '.jpeg')): 
     """
-    Return three lists with the input, target and mask filenames respectively.
-    Note thate filenames should end with a number to identify correct tuples, e.g.:
-        input_0123.png, target_0123.png, (mask_0123.png)
+    Return two lists with the input and target filenames respectively.
+    Note thate filenames should be order the same to identify correct tuples.
     
     The data directory is assumed to be organised as follow:
         data_dir:
             subdir1:
                 rgb_frames: folder with input images
                 seg_frames: folder with target images
-                mask_frames: folder with mask images (optional)
             subdir2:
                 rgb_frames: folder with input images
                 seg_frames: folder with target images
-                mask_frames: folder with mask images (optional)
             ...
     data_dir can also be a list of the path to subdirs to use.
     
     Args:
         data_dir: str, or list of str
             Directory/path to the data, or list of directories/paths to the subdirs.
-        use_masks: bool (default = False)
-            If True, will look for mask images. If False, will return None.
-            If True and no mask is found, return None.
         valid_extensions: tuple of str (default = ('.png', '.jpg', '.jpeg'))
             Tuple of the valid image extensions.
     
     Returns:
-        x_filenames, y_filenames, mask_filenames: lists of str 
-            Contain the input, target and mask image paths respectively.
+        x_filenames, y_filenames: lists of str 
+            Contain the input and target image paths respectively.
     """
     if isinstance(data_dir, list):
         subdirs_list = data_dir
@@ -122,45 +105,25 @@ def get_filenames(data_dir, use_masks=False,
         valid_extensions = tuple(valid_extensions)
     x_filenames = []
     y_filenames = []
-    mask_filenames = []
     
     for data_subdir in subdirs_list:
-        x_tmp = [None] * len(os.listdir(os.path.join(data_subdir, "rgb_frames")))
-        y_tmp = [None] * len(os.listdir(os.path.join(data_subdir, "rgb_frames")))
-        mask_tmp = [None] * len(os.listdir(os.path.join(data_subdir, "rgb_frames")))
-        
         # Inputs
         for frame_filename in sorted(os.listdir(os.path.join(data_subdir, "rgb_frames"))):
             if frame_filename.lower().endswith(valid_extensions):
-                # Find suffix ID number
-                idx = int(re.search(r'\d+$', frame_filename.split('.')[-2]).group(0))
-                x_tmp[idx] = os.path.join(data_subdir, "rgb_frames", frame_filename)
+                x_filenames.append(os.path.join(data_subdir, "rgb_frames", frame_filename))
         # Targets
         for frame_filename in sorted(os.listdir(os.path.join(data_subdir, "seg_frames"))):
             if frame_filename.lower().endswith(valid_extensions):
-                # Find suffix ID number
-                idx = int(re.search(r'\d+$', frame_filename.split('.')[-2]).group(0))
-                y_tmp[idx] = os.path.join(data_subdir, "seg_frames", frame_filename)
-        # Maks (if any)
-        if use_masks and os.path.isdir(os.path.join(data_subdir, "mask_frames")):
-            for frame_filename in sorted(os.listdir(os.path.join(data_subdir, "mask_frames"))):
-                if frame_filename.lower().endswith(valid_extensions):
-                    # Find suffix ID number
-                    idx = int(re.search(r'\d+$', frame_filename.split('.')[-2]).group(0))
-                    mask_tmp[idx] = os.path.join(data_subdir, "mask_frames", frame_filename)
-        
-        x_filenames += x_tmp
-        y_filenames += y_tmp
-        mask_filenames += mask_tmp
+                y_filenames.append(os.path.join(data_subdir, "seg_frames", frame_filename))
             
-    return x_filenames, y_filenames, mask_filenames
+    return x_filenames, y_filenames
 
 
 def _pad_collate(batch):
     """Collate function that pads input/target/mask images to the same size."""
     pad_batch = []
     
-    # Find largest shape (note that first dimension is channel)
+    # Find largest shape (item[1] is the target image)
     shapes = [item[1].shape for item in batch]
     heights = np.array([height for height, width in shapes])
     widths = np.array([width for height, width in shapes])
@@ -172,18 +135,17 @@ def _pad_collate(batch):
     
     # Pad images to largest shape 
     for item in batch:
-        shape = item[0].shape
-        padding = [(int(np.floor((max_height - shape[1])/2)), int(np.ceil((max_height - shape[1])/2))), 
-                   (int(np.floor((max_width - shape[2])/2)), int(np.ceil((max_width - shape[2])/2)))]
+        shape = item[1].shape
+        padding = [(int(np.floor((max_height - shape[0])/2)), int(np.ceil((max_height - shape[0])/2))), 
+                   (int(np.floor((max_width - shape[1])/2)), int(np.ceil((max_width - shape[1])/2)))]
         pad_batch.append((
             np.pad(item[0], [(0,0)] + padding, 'constant'),
-            np.pad(item[1], padding, 'constant'),
-            np.pad(item[2], padding, 'constant')))
+            np.pad(item[1], padding, 'constant')))
     
     return data.dataloader.default_collate(pad_batch)
 
 
-def get_dataloader(data_dir, batch_size, input_channels="R", use_masks=False,
+def get_dataloader(data_dir, batch_size, input_channels="RG",
                    shuffle=True, transform=None, target_transform=None, 
                    num_workers=1):
     """
@@ -195,11 +157,9 @@ def get_dataloader(data_dir, batch_size, input_channels="R", use_masks=False,
             or list of directories/paths to the subdirs.
         batch_size: int
             Number of samples to return as a batch.
-        input_channels: str (default = "R")
+        input_channels: str (default = "RG")
             Indicates the channels to load from the input images, e.g. "RG"
             for Red and Green.
-        use_masks: bool (default = False)
-            If True, will look for masks and return them with the input and target.
         shuffle: bool (default = True)
             If True, the data is shuffled before being returned as batches.
         transform: callable (default = None)
@@ -210,19 +170,17 @@ def get_dataloader(data_dir, batch_size, input_channels="R", use_masks=False,
             Number of workers for the PyTorch Dataloader.
             
     Returns:
-        a dataloader that generates tuples (input, target, mask). If no mask is
-        available, or use_masks==False, the mask argument will be zeros.
+        A dataloader that generates tuples (input, target).
     """
-    x, y, masks = get_filenames(data_dir, use_masks=use_masks)
-    dataset = ImageLoaderDataset(x, y, masks, input_channels=input_channels,
+    x, y = get_filenames(data_dir)
+    dataset = ImageLoaderDataset(x, y, input_channels=input_channels,
                                  transform=transform, target_transform=target_transform)
     return data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
                            collate_fn=_pad_collate, num_workers=num_workers)
 
 
-def get_all_dataloaders(data_dir, batch_size, input_channels="R", test_dataloader=False,
-                        synthetic_data=False, synthetic_ratio=None,
-                        synthetic_only=False, use_masks=False,
+def get_all_dataloaders(data_dir, batch_size, input_channels="RG", test_dataloader=False,
+                        synthetic_data=False, synthetic_ratio=None, synthetic_only=False,
                         train_transform=None, train_target_transform=None,
                         eval_transform=None, eval_target_transform=None):
     """
@@ -235,7 +193,7 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="R", test_dataloade
             (see get_filenames() for their specific structure).
         batch_size: int
             Number of samples to return as a batch.
-        input_channels: str (default = "R")
+        input_channels: str (default = "RG")
             Indicates the channels to load from the input images, e.g. "RG"
             for Red and Green.
         test_dataloader: bool (default = False)
@@ -257,12 +215,6 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="R", test_dataloade
             As opposed to synthetic_ratio=1.0, this will use all of the data
             under "synthetic/", instead of using as many experiments as there 
             are in "train/". /!\ Overwrite synthetic_data.
-        use_masks: bool (default = False)
-            If True, will also look for masks in data folders. The masks are used
-            in the loss computation: every positive pixel in mask and negative
-            in target are ignored (i.e.: mask AND NOT target --> ignored).
-            If False or a mask does not exist for an image, the mask returned
-            by the dataloaders will be zeros.
         train_transform: callable (default = None)
             Transformation to apply to the train input images.
         train_target_transform: callable (default = None)
@@ -275,8 +227,7 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="R", test_dataloade
     Returns:
         A dictionary with the train, validation and (optional) test dataloaders
         under the respective keys "train", "valid", and "test".
-        Each batch in made of a tuple: (input, target, mask). See use_masks argument
-        for more detail on that.
+        Batches are made of (input, target) tuples.
     """
     # If synthetic data is used, build a list of folders for the train set
     if synthetic_only:
@@ -334,7 +285,6 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="R", test_dataloade
             train_dir,
             batch_size=batch_size,
             input_channels=input_channels,
-            use_masks=use_masks,
             shuffle=True,
             transform=train_transform,
             target_transform=train_target_transform
@@ -343,7 +293,6 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="R", test_dataloade
             os.path.join(data_dir, "validation/"),
             batch_size=batch_size,
             input_channels=input_channels,
-            use_masks=use_masks,
             shuffle=False,
             transform=eval_transform,
             target_transform=eval_target_transform
@@ -353,7 +302,6 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="R", test_dataloade
                 os.path.join(data_dir, "test/"),
                 batch_size=batch_size,
                 input_channels=input_channels,
-                use_masks=use_masks,
                 shuffle=False,
                 transform=eval_transform,
                 target_transform=eval_target_transform

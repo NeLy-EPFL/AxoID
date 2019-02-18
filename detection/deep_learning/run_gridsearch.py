@@ -40,7 +40,6 @@ def main():
             synthetic_only = False,
             synthetic_ratio = None,
             timeit = False,
-            use_masks = False,
             verbose = False
     )
     model = None

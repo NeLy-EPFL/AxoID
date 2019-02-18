@@ -95,10 +95,10 @@ class CustomUNet(torch.nn.Module):
     Args:
         in_channels: int
             Number of channels of the input images.
-        u_depth: int (default = 1)
+        u_depth: int (default = 4)
             Depth of the network's U-shape (should be > 0). I.e., there will
             be `u_depth` MaxPooling, and `u_depth` transposed convolutions.
-        out1_channels: int (default = 8)
+        out1_channels: int (default = 16)
             Number of output channels after the first convolutional block.
             Note that after this, each ConvBlock doubles the channels, and
             each UpConvBlock halves the channels.
@@ -112,7 +112,7 @@ class CustomUNet(torch.nn.Module):
         device: PyTorch device (default = torch.device("cpu"))
             Device to which the model is to be placed
     """
-    def __init__(self, in_channels, u_depth=1, out1_channels=8,
+    def __init__(self, in_channels, u_depth=4, out1_channels=16,
                  activation=torch.nn.ReLU(), batchnorm=True,
                  device=torch.device("cpu")):
         """Initialize the model (see class docstring for arguments description)."""

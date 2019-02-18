@@ -93,7 +93,7 @@ def overlay_preds_targets(predictions, targets, masks=None):
                            opacity=1, mask_color=[1,0,0])
     if masks is None:
         final = incorrect
-    else:
+    else: # add masks as transparent yellow
         final = overlay_fn(incorrect, masks, opacity=0.5, mask_color=[1,1,0])
     return final
 
