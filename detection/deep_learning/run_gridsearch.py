@@ -25,6 +25,7 @@ def main():
     # Arguments for run_train
     args = Arguments(
             batch_size = 32,
+            crop_dice = False,
             data_aug = False,
             data_dir = "/data/talabot/dataset_cv-annotated/",
             epochs = n_epochs,
@@ -59,11 +60,15 @@ def main():
                                batchnorm = True)
             history = run_train.main(args, model=model)
             best_epoch = np.argmax(history["val_dice"])
-            print(" | loss={:.6f} - lossC{:.1f}={:.6f} - dice={:.6f} - diC{:.1f}={:.6f}".format(
+            print(" | loss={:.6f} - lossC{:.1f}={:.6f} - dice={:.6f}".format(
                     history["val_loss"][best_epoch], 
                     args.scale_crop, history["val_lossC%.1f" % args.scale_crop][best_epoch],
-                    history["val_dice"][best_epoch],
-                    args.scale_crop, history["val_diC%.1f" % args.scale_crop][best_epoch]))
+                    history["val_dice"][best_epoch]), end="")
+            if args.crop_dice:
+                print(" - diC{:.1f}={:.6f}".format(
+                        args.scale_crop, history["val_diC%.1f" % args.scale_crop][best_epoch]),
+                end="")
+            print()
             
         except RuntimeError as err: # CUDA out of memory
             print(" | RuntimeError ({})".format(err))
@@ -81,11 +86,15 @@ def main():
                                batchnorm = True)
             history = run_train.main(args, model=model)
             best_epoch = np.argmax(history["val_dice"])
-            print(" | loss={:.6f} - lossC{:.1f}={:.6f} - dice={:.6f} - diC{:.1f}={:.6f}".format(
+            print(" | loss={:.6f} - lossC{:.1f}={:.6f} - dice={:.6f}".format(
                     history["val_loss"][best_epoch], 
                     args.scale_crop, history["val_lossC%.1f" % args.scale_crop][best_epoch],
-                    history["val_dice"][best_epoch],
-                    args.scale_crop, history["val_diC%.1f" % args.scale_crop][best_epoch]))
+                    history["val_dice"][best_epoch]), end="")
+            if args.crop_dice:
+                print(" - diC{:.1f}={:.6f}".format(
+                        args.scale_crop, history["val_diC%.1f" % args.scale_crop][best_epoch]),
+                end="")
+            print()
             
         except RuntimeError as err: # CUDA out of memory
             print(" | RuntimeError ({})".format(err))

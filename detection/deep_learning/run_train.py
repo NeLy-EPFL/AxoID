@@ -143,8 +143,9 @@ def main(args, model=None):
     
     loss_fn = torch.nn.BCEWithLogitsLoss(reduction='elementwise_mean', pos_weight=pos_weight)
     
-    dice_metric = get_dice_metric()
-    diceC_metric = get_crop_dice_metric(scale=args.scale_crop)
+    metrics = {"dice": get_dice_metric()}
+    if args.crop_dice:
+        metrics.update({"diC%.1f" % args.scale_crop: get_crop_dice_metric(scale=args.scale_crop)})
     
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     
@@ -154,8 +155,7 @@ def main(args, model=None):
                                 loss_fn,
                                 optimizer,
                                 args.epochs,
-                                metrics = {"dice": dice_metric, 
-                                           "diC%.1f" % args.scale_crop: diceC_metric},
+                                metrics = metrics,
                                 criterion_metric = "dice",
                                 model_dir = args.model_dir,
                                 replace_dir = True,
@@ -165,22 +165,28 @@ def main(args, model=None):
     if args.save_fig and args.model_dir is not None:
         fig = plt.figure(figsize=(8,6))
         plt.subplot(121)
-        plt.title("Loss" % args.scale_crop)
+        plt.title("Loss")
         plt.plot(history["epoch"], history["loss"], color="C0")
         plt.plot(history["epoch"], history["val_loss"], color="C1")
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.legend(["train loss", "valid loss"])
         plt.subplot(122)
-        plt.title("Dice coefficients\n(crop scale = %.1f)" % args.scale_crop)
+        plt.title("Dice coefficients" + \
+                  ("\n(crop scale = %.1f)" % args.scale_crop if args.crop_dice else ""))
         plt.plot(history["epoch"], history["dice"], color="C0")
-        plt.plot(history["epoch"], history["diC%.1f" % args.scale_crop], "--", color="C0")
+        if args.crop_dice:
+            plt.plot(history["epoch"], history["diC%.1f" % args.scale_crop], "--", color="C0")
         plt.plot(history["epoch"], history["val_dice"], color="C1")
-        plt.plot(history["epoch"], history["val_diC%.1f" % args.scale_crop], "--", color="C1")
+        if args.crop_dice:
+            plt.plot(history["epoch"], history["val_diC%.1f" % args.scale_crop], "--", color="C1")
         plt.xlabel("Epoch")
         plt.ylabel("Dice coef.")
         plt.ylim(0,1)
-        plt.legend(["train dice", "train cropped dice", "valid dice", "valid cropped dice"])
+        if args.crop_dice:
+            plt.legend(["train dice", "train cropped dice", "valid dice", "valid cropped dice"])
+        else:
+            plt.legend(["train dice", "valid dice"])
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         fig.savefig(os.path.join(args.model_dir, "train_fig.png"), dpi=400)
         print("Training figure saved at %s." % os.path.join(args.model_dir, "train_fig.png"))
@@ -190,12 +196,12 @@ def main(args, model=None):
     ## Evaluate best model over test data
     if args.eval_test:
         test_metrics = evaluate(best_model, dataloaders["test"], 
-                                {"loss": lambda x,y,z: loss_fn(x[z], y[z]),
-                                 "dice": dice_metric, "diC%.1f" % args.scale_crop: diceC_metric})
+                                {"loss": loss_fn, **metrics})
         if args.verbose:
             print("\nTest loss = {}".format(test_metrics["loss"]))
             print("Test dice = {}".format(test_metrics["dice"]))
-            print("Crop dice = {}".format(test_metrics["diC%.1f" % args.scale_crop]))
+            if args.crop_dice:
+                print("Crop dice = {}".format(test_metrics["diC%.1f" % args.scale_crop]))
         
     ## Display script duration if applicable
     if args.timeit:
@@ -219,6 +225,11 @@ if __name__ == "__main__":
             type=int,
             default=32, 
             help="batch_size for the dataloaders (default=32)"
+    )
+    parser.add_argument(
+            '--crop_dice', 
+            action="store_true",
+            help="enable the use of the cropped dice coefficient as performance metric"
     )
     parser.add_argument(
             '--data_aug', 
