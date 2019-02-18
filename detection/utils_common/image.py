@@ -56,7 +56,8 @@ def overlay_mask(image, mask, opacity=0.25, mask_color=[1.0, 0.0, 0.0], rescale_
         overlay = color.gray2rgb(image)
     else:
         overlay = image.copy()
-        
+    
+    overlay = overlay.astype(np.float)
     if rescale_img:
         overlay /= overlay.max()
         
@@ -72,6 +73,7 @@ def overlay_mask_stack(stack, mask, opacity=0.25, mask_color=[1.0, 0.0, 0.0], re
     else:
         overlay = stack.copy()
         
+    overlay = overlay.astype(np.float)
     for i in range(len(stack)):
         overlay[i] = overlay_mask(overlay[i], mask[i], opacity=opacity, 
                mask_color=mask_color, rescale_img=rescale_img)

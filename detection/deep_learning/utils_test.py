@@ -70,7 +70,7 @@ def predict_stack(model, stack, batch_size, input_channels="RG"):
 
 
 def evaluate(model, dataloader, metrics):
-    """Return the metric values for the given dataloader and model."""
+    """Return the average metric values for the given dataloader and model."""
     values = {}
     for key in metrics.keys():
         values[key] = 0
@@ -130,7 +130,7 @@ def show_sample(model, dataloader, n_samples=4, metrics=None):
                 end="")
             print("\b\b")
     
-    preds = torch.tensor(torch.sigmoid(preds) > 0.5, dtype=torch.float32)
+    preds = torch.sigmoid(preds) > 0.5
         
     # Modify inputs to make sure it is a valid image
     inputs = make_images_valid(inputs)

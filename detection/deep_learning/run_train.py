@@ -127,7 +127,7 @@ def main(args, model=None):
             print("%d test images." % N_TEST)
         print("{:.3f} positive weighting.".format(pos_weight.item()))
     
-    ## Model, loss, and optimizer definition
+    ## Model, loss, metrics, and optimizer definition
     if model is None:
         model = CustomUNet(len(args.input_channels), u_depth=u_depth,
                            out1_channels=out1_channels, batchnorm=True, device=device)
