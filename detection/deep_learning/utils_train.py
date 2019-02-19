@@ -78,7 +78,6 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
         history[key] = []
         history["val_" + key] = []
     
-    
     if verbose:
         start_time = time.time()
     
@@ -91,10 +90,13 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
             print(epoch_msg)
             print("-" * len(epoch_msg))
         
+        # Append epoch and learning rate to history, apply schedule if applicable
         history["epoch"].append(epoch)
         if scheduler is not None:
             scheduler.step(epoch)
-        history["lr"].append(scheduler.get_lr()[0])
+            history["lr"].append(scheduler.get_lr()[0])
+        else:
+            history["lr"].append(optimizer.state_dict()["param_groups"][0]["lr"])
         if verbose and epoch > 0 and history["lr"][-2] != history["lr"][-1]:
             print("Learning rate decayed from", history["lr"][-2], "to", history["lr"][-1])
         
