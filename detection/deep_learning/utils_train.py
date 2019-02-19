@@ -9,11 +9,12 @@ Created on Mon Oct 22 13:54:19 2018
 
 import os, time, tempfile, shutil, copy
 import numpy as np
+import matplotlib.pyplot as plt
 
 import torch
 
 
-def train(model, dataloaders, loss_fn, optimizer, n_epochs, metrics={},
+def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metrics=None,
           criterion_metric="loss", model_dir=None, replace_dir=True, verbose=1):
     """
     Train the model, and return the best found, as well as the training history.
@@ -32,7 +33,10 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, metrics={},
             Optimzer for the SGD algorithm.
         n_epochs: int
             Number of epochs (pass over the whole data).
-        metrics: dict of callable
+        scheduler: PyTorch lr_scheduler (default = None)
+            Learning rate decay scheduler for the given optimizer. If None,
+            no schedule is applied
+        metrics: dict of callable (default = None)
             Dictionary of metrics to be computed over the data. It should take 
             3 tensors as input (predictions, targets, and masks), and output a 
             scalar tensor. Keys should be their name, value the callable.
@@ -67,7 +71,9 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, metrics={},
         save_dir = model_dir
     os.makedirs(save_dir, exist_ok=replace_dir)
         
-    history = {"loss": [], "val_loss": [], "epoch": []}
+    if metrics is None:
+        metrics = {}
+    history = {"loss": [], "val_loss": [], "epoch": [], "lr": []}
     for key in metrics.keys():
         history[key] = []
         history["val_" + key] = []
@@ -86,6 +92,11 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, metrics={},
             print("-" * len(epoch_msg))
         
         history["epoch"].append(epoch)
+        if scheduler is not None:
+            scheduler.step(epoch)
+        history["lr"].append(scheduler.get_lr()[0])
+        if verbose and epoch > 0 and history["lr"][-2] != history["lr"][-1]:
+            print("Learning rate decayed from", history["lr"][-2], "to", history["lr"][-1])
         
         for phase in ["train", "valid"]:
             if phase == 'train':
@@ -187,3 +198,33 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, metrics={},
         shutil.rmtree(save_dir)
     
     return best_model, history
+
+
+def train_plot(history, crop_dice=False, scale_crop=4.0):
+    """Return a figure of the training history."""
+    fig = plt.figure(figsize=(8,6))
+    plt.subplot(121)
+    plt.title("Loss")
+    plt.plot(history["epoch"], history["loss"], color="C0")
+    plt.plot(history["epoch"], history["val_loss"], color="C1")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend(["train loss", "valid loss"])
+    plt.subplot(122)
+    plt.title("Dice coefficient" + \
+              ("s\n(crop scale = %.1f)" % scale_crop if crop_dice else ""))
+    plt.plot(history["epoch"], history["dice"], color="C0")
+    if crop_dice:
+        plt.plot(history["epoch"], history["diC%.1f" % scale_crop], "--", color="C0")
+    plt.plot(history["epoch"], history["val_dice"], color="C1")
+    if crop_dice:
+        plt.plot(history["epoch"], history["val_diC%.1f" % scale_crop], "--", color="C1")
+    plt.xlabel("Epoch")
+    plt.ylabel("Dice coef.")
+    plt.ylim(0,1)
+    if crop_dice:
+        plt.legend(["train dice", "train cropped dice", "valid dice", "valid cropped dice"])
+    else:
+        plt.legend(["train dice", "valid dice"])
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    return fig

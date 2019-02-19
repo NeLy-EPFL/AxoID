@@ -14,7 +14,6 @@ import random
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 from skimage import io
 import imgaug.augmenters as iaa
 
@@ -23,7 +22,7 @@ import torch
 from utils_data import get_all_dataloaders, normalize_range
 from utils_metric import get_dice_metric, get_crop_dice_metric
 from utils_model import CustomUNet
-from utils_train import train
+from utils_train import train, train_plot
 from utils_test import evaluate
 
 def main(args, model=None):
@@ -148,6 +147,12 @@ def main(args, model=None):
         metrics.update({"diC%.1f" % args.scale_crop: get_crop_dice_metric(scale=args.scale_crop)})
     
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    if args.step_decay is not None:
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.step_decay, 0.5)
+        if args.verbose:
+            print("Learning rate decay is enabled with step = %d epochs." % args.step_decay)
+    else:
+        scheduler = None
     
     ## Train the model
     best_model, history = train(model,
@@ -155,6 +160,7 @@ def main(args, model=None):
                                 loss_fn,
                                 optimizer,
                                 args.epochs,
+                                scheduler = scheduler,
                                 metrics = metrics,
                                 criterion_metric = "dice",
                                 model_dir = args.model_dir,
@@ -163,31 +169,7 @@ def main(args, model=None):
     
     ## Save a figure if applicable
     if args.save_fig and args.model_dir is not None:
-        fig = plt.figure(figsize=(8,6))
-        plt.subplot(121)
-        plt.title("Loss")
-        plt.plot(history["epoch"], history["loss"], color="C0")
-        plt.plot(history["epoch"], history["val_loss"], color="C1")
-        plt.xlabel("Epoch")
-        plt.ylabel("Loss")
-        plt.legend(["train loss", "valid loss"])
-        plt.subplot(122)
-        plt.title("Dice coefficients" + \
-                  ("\n(crop scale = %.1f)" % args.scale_crop if args.crop_dice else ""))
-        plt.plot(history["epoch"], history["dice"], color="C0")
-        if args.crop_dice:
-            plt.plot(history["epoch"], history["diC%.1f" % args.scale_crop], "--", color="C0")
-        plt.plot(history["epoch"], history["val_dice"], color="C1")
-        if args.crop_dice:
-            plt.plot(history["epoch"], history["val_diC%.1f" % args.scale_crop], "--", color="C1")
-        plt.xlabel("Epoch")
-        plt.ylabel("Dice coef.")
-        plt.ylim(0,1)
-        if args.crop_dice:
-            plt.legend(["train dice", "train cropped dice", "valid dice", "valid cropped dice"])
-        else:
-            plt.legend(["train dice", "valid dice"])
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        fig = train_plot(history, crop_dice=args.crop_dice, scale_crop=args.scale_crop)
         fig.savefig(os.path.join(args.model_dir, "train_fig.png"), dpi=400)
         print("Training figure saved at %s." % os.path.join(args.model_dir, "train_fig.png"))
     if args.model_dir is not None:
@@ -297,6 +279,13 @@ if __name__ == "__main__":
             type=int,
             default=1,
             help="initial seed for RNG (default=1)"
+    )
+    parser.add_argument(
+            '--step_decay', 
+            type=int,
+            default=None,
+            help="enable the learning rate decay. The learning rate is divided"
+            "by 2 every step_decay epochs."
     )
     parser.add_argument(
             '--synthetic_data', 
