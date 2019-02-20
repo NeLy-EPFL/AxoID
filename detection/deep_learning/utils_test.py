@@ -78,9 +78,9 @@ def evaluate(model, dataloader, metrics):
     # Compute metrics over all data
     model.eval()
     with torch.no_grad():
-        for i, (batch_x, batch_y) in enumerate(dataloader):
-            batch_x = batch_x.to(model.device)
-            batch_y = batch_y.to(model.device)
+        for i, batch in enumerate(dataloader):
+            batch_x = batch[0].to(model.device)
+            batch_y = batch[1].to(model.device)
             
             y_pred = model(batch_x)
 
@@ -116,6 +116,9 @@ def show_sample(model, dataloader, n_samples=4, metrics=None):
     targets = torch.stack([torch.from_numpy(item[1]) for item in items])
     inputs = inputs.to(model.device)
     targets = targets.to(model.device)
+    if len(items[0]) == 3: # loss weights
+        weights = torch.stack([torch.from_numpy(item[2]) for item in items])
+        weights = weights.to(model.device)
     
     with torch.no_grad():
         model.eval()
@@ -139,13 +142,28 @@ def show_sample(model, dataloader, n_samples=4, metrics=None):
     outs = torchvision.utils.make_grid(inputs, pad_value=1.0)
     outs_p = torchvision.utils.make_grid(preds.view([-1, 1, height, width]), pad_value=1.0)
     outs_t = torchvision.utils.make_grid(targets.view([-1, 1, height, width]), pad_value=0)
+    if len(items[0]) == 3:
+        outs_w = torchvision.utils.make_grid(weights.view([-1, 1, height, width]), pad_value=1.0)
     
-    plt.figure(figsize=(13,7))
-    plt.subplot(211); plt.title("Inputs")
-    plt.imshow(outs.cpu().numpy().transpose([1,2,0]), vmin=0, vmax=1)
-    plt.subplot(212); plt.title("Predictions and ground truths")
-    plt.imshow(overlay_preds_targets(
-            outs_p.cpu().numpy().clip(0,1)[0],
-            outs_t.cpu().numpy()[0]))
-    plt.tight_layout()
-    plt.show()
+    if len(items[0]) == 3:
+        plt.figure(figsize=(13,10))
+        plt.subplot(311); plt.title("Inputs")
+        plt.imshow(outs.cpu().numpy().transpose([1,2,0]), vmin=0, vmax=1)
+        plt.subplot(312); plt.title("Predictions and ground truths")
+        plt.imshow(overlay_preds_targets(
+                outs_p.cpu().numpy().clip(0,1)[0],
+                outs_t.cpu().numpy()[0]))
+        plt.subplot(313); plt.title("Pixel-wise loss weights")
+        plt.imshow(outs_w.cpu().numpy()[0], vmin=0, vmax=1, cmap="gray")
+        plt.tight_layout()
+        plt.show()
+    else:
+        plt.figure(figsize=(13,7))
+        plt.subplot(211); plt.title("Inputs")
+        plt.imshow(outs.cpu().numpy().transpose([1,2,0]), vmin=0, vmax=1)
+        plt.subplot(212); plt.title("Predictions and ground truths")
+        plt.imshow(overlay_preds_targets(
+                outs_p.cpu().numpy().clip(0,1)[0],
+                outs_t.cpu().numpy()[0]))
+        plt.tight_layout()
+        plt.show()

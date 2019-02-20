@@ -20,6 +20,7 @@ import imgaug.augmenters as iaa
 import torch
 
 from utils_data import get_all_dataloaders, normalize_range
+from utils_loss import get_BCEWithLogits_loss
 from utils_metric import get_dice_metric, get_crop_dice_metric
 from utils_model import CustomUNet
 from utils_train import train, train_plot
@@ -63,7 +64,7 @@ def main(args, model=None):
     def pad_transform(image):
         """Pad images to multiple of 2**u_depth, if needed."""
         factor = 2 ** u_depth
-        if image.ndim == 3:
+        if image.ndim == 3: # channels first
             height, width = image.shape[1:]
         elif image.ndim == 2:
             height, width = image.shape
@@ -76,7 +77,7 @@ def main(args, model=None):
         width_pad = (factor - width % factor) * bool(width % factor)
         padding = [(int(np.floor(height_pad/2)), int(np.ceil(height_pad/2))), 
                    (int(np.floor(width_pad/2)), int(np.ceil(width_pad/2)))]
-        if image.ndim == 3:
+        if image.ndim == 3: # do not pad channels
             return np.pad(image, [(0,0)] + padding, 'constant')
         elif image.ndim == 2:
             return np.pad(image, padding, 'constant')
@@ -88,6 +89,7 @@ def main(args, model=None):
         args.batch_size, 
         input_channels = args.input_channels, 
         test_dataloader = args.eval_test,
+        use_weights = args.pixel_weight,
         synthetic_data = args.synthetic_data,
         synthetic_ratio = args.synthetic_ratio,
         synthetic_only = args.synthetic_only,
@@ -108,7 +110,8 @@ def main(args, model=None):
         y = io.imread(filename)
         pos_count += (y == 255).sum()
         neg_count += (y == 0).sum()
-    pos_weight = torch.tensor(neg_count / pos_count).to(device)
+    pos_weight = torch.tensor((neg_count + pos_count) / (2 * pos_count)).to(device)
+    neg_weight = torch.tensor((neg_count + pos_count) / (2 * neg_count)).to(device)
     
     if args.verbose:
         print("%d train images" % N_TRAIN, end="")
@@ -124,7 +127,10 @@ def main(args, model=None):
         print("%d validation images." % N_VALID)
         if args.eval_test:
             print("%d test images." % N_TEST)
+        if args.pixel_weight:
+            print("Pixel-wise weighting enabled.")
         print("{:.3f} positive weighting.".format(pos_weight.item()))
+        print("{:.3f} negative weighting.".format(neg_weight.item()))
     
     ## Model, loss, metrics, and optimizer definition
     if model is None:
@@ -140,7 +146,7 @@ def main(args, model=None):
     if args.verbose:
         print("\nModel definition:", model, "\n")
     
-    loss_fn = torch.nn.BCEWithLogitsLoss(reduction='elementwise_mean', pos_weight=pos_weight)
+    loss_fn = get_BCEWithLogits_loss(pos_weight=pos_weight, neg_weight=neg_weight)
     
     metrics = {"dice": get_dice_metric()}
     if args.crop_dice:
@@ -226,7 +232,8 @@ if __name__ == "__main__":
             "train/, validation/, and test/ subdirs (test/ is not mandatory, see --eval_test). "
             "These should be structured as: "
             "train_dir-->subdirs-->rgb_frames: folder with input images; and "
-            "train_dir-->subdirs-->seg_frames: folder with target images (default=/data/talabot/dataset/)"
+            "train_dir-->subdirs-->seg_frames: folder with target images; and (optional, see --pixel_weight)"
+            "train_dir-->subdirs-->wgt_frames: folder with weight images (default=/data/talabot/dataset/)"
     )
     parser.add_argument(
             '--epochs', 
@@ -260,6 +267,11 @@ if __name__ == "__main__":
             '--no_gpu', 
             action="store_true",
             help="disable gpu utilization (not needed if no gpu are available)"
+    )
+    parser.add_argument(
+            '--pixel_weight', 
+            action="store_true",
+            help="enable pixel-wise weighting using pre-computed weight images"
     )
     parser.add_argument(
             '--save_fig', 

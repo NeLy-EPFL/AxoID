@@ -19,14 +19,16 @@ from utils_common.image import imread_to_float
 class ImageLoaderDataset(data.Dataset):
     """Dataset that loads image online for efficient memory usage."""
     
-    def __init__(self, x_filenames, y_filenames, input_channels="RGB", 
-                 transform=None, target_transform=None):
+    def __init__(self, x_filenames, y_filenames, w_filenames=None, 
+                 input_channels="RGB", transform=None, target_transform=None):
         """
         Args:
             x_filenames: list of str
                 Contains the filenames/path to the input images.
             y_filenames: list of str
                 Contains the filenames/path to the target images.
+            w_filenames: list of str
+                Contains the filenames/path to the weight images.
             input_channels: str (default = "RGB")
                 Indicates the channels to load from the input images, e.g. "RG"
                 for Red and Green.
@@ -38,14 +40,15 @@ class ImageLoaderDataset(data.Dataset):
         super(ImageLoaderDataset, self).__init__()
         self.x_filenames = x_filenames
         self.y_filenames = y_filenames
+        self.w_filenames = w_filenames
         
         if len(self.x_filenames) != len(self.y_filenames):
-            raise ValueError("Not the same number of files in input and target lists (%d != %d)." %
-                            (len(self.x_filenames), len(self.y_filenames)))
+            raise ValueError("Not the same number of files in input and target lists"
+                             " (%d != %d)." % (len(self.x_filenames), len(self.y_filenames)))
             
         self.input_channels = input_channels
         if self.input_channels == "":
-            raise ValueError("At least one input channel has to be used.")
+            raise ValueError("At least one input channel is needed.")
         
         self.transform = transform
         self.target_transform = target_transform
@@ -57,6 +60,11 @@ class ImageLoaderDataset(data.Dataset):
         # Load images to float in range [0,1]
         image = imread_to_float(self.x_filenames[idx], scaling=255)
         target = imread_to_float(self.y_filenames[idx], scaling=255)
+        if self.w_filenames is not None:
+            if self.w_filenames[idx] is not None:
+                weight = imread_to_float(self.w_filenames[idx], scaling=255)
+            else:
+                weight = np.zeros_like(target)
         
         # Keep only relevant input channels
         channel_imgs = {"R": image[:,:,0], "G": image[:,:,1], "B": image[:,:,2]}
@@ -66,13 +74,18 @@ class ImageLoaderDataset(data.Dataset):
             image = self.transform(image)
         if self.target_transform is not None:
             target = self.target_transform(target)
+            if self.w_filenames is not None:
+                weight = self.target_transform(weight)
         
-        return image, target
+        if self.w_filenames is not None:
+            return image, target, weight
+        else:
+            return image, target
 
 
-def get_filenames(data_dir, valid_extensions=('.png', '.jpg', '.jpeg')): 
+def get_filenames(data_dir, use_weights=False, valid_extensions=('.png', '.jpg', '.jpeg')): 
     """
-    Return two lists with the input and target filenames respectively.
+    Return 2(3) lists with the input, target (and weight) filenames respectively.
     Note thate filenames should be order the same to identify correct tuples.
     
     The data directory is assumed to be organised as follow:
@@ -80,21 +93,25 @@ def get_filenames(data_dir, valid_extensions=('.png', '.jpg', '.jpeg')):
             subdir1:
                 rgb_frames: folder with input images
                 seg_frames: folder with target images
+                wgt_frames: folder with weight images (optional)
             subdir2:
                 rgb_frames: folder with input images
                 seg_frames: folder with target images
+                wgt_frames: folder with weight images (optional)
             ...
     data_dir can also be a list of the path to subdirs to use.
     
     Args:
         data_dir: str, or list of str
             Directory/path to the data, or list of directories/paths to the subdirs.
+        use_weights: bool (default = False)
+            If True, will look for weight images and add them to the dataloaders.
         valid_extensions: tuple of str (default = ('.png', '.jpg', '.jpeg'))
             Tuple of the valid image extensions.
     
     Returns:
-        x_filenames, y_filenames: lists of str 
-            Contain the input and target image paths respectively.
+        x_filenames, y_filenames(, w_filenames): lists of str 
+            Contain the input, target, (and weight) image paths respectively.
     """
     if isinstance(data_dir, list):
         subdirs_list = data_dir
@@ -105,6 +122,8 @@ def get_filenames(data_dir, valid_extensions=('.png', '.jpg', '.jpeg')):
         valid_extensions = tuple(valid_extensions)
     x_filenames = []
     y_filenames = []
+    if use_weights:
+        w_filenames = []
     
     for data_subdir in subdirs_list:
         # Inputs
@@ -115,8 +134,20 @@ def get_filenames(data_dir, valid_extensions=('.png', '.jpg', '.jpeg')):
         for frame_filename in sorted(os.listdir(os.path.join(data_subdir, "seg_frames"))):
             if frame_filename.lower().endswith(valid_extensions):
                 y_filenames.append(os.path.join(data_subdir, "seg_frames", frame_filename))
-            
-    return x_filenames, y_filenames
+        # Weights
+        if use_weights:
+            if os.path.isdir(os.path.join(data_subdir, "wgt_frames")):
+                for frame_filename in sorted(os.listdir(os.path.join(data_subdir, "wgt_frames"))):
+                    if frame_filename.lower().endswith(valid_extensions):
+                        w_filenames.append(os.path.join(data_subdir, "wgt_frames", frame_filename))
+            else: # if no weights, append None
+                for _ in range(len(x_filenames) - len(w_filenames)):
+                    w_filenames.append(None)
+    
+    if use_weights:
+        return x_filenames, y_filenames, w_filenames
+    else:
+        return x_filenames, y_filenames
 
 
 def _pad_collate(batch):
@@ -138,16 +169,22 @@ def _pad_collate(batch):
         shape = item[1].shape
         padding = [(int(np.floor((max_height - shape[0])/2)), int(np.ceil((max_height - shape[0])/2))), 
                    (int(np.floor((max_width - shape[1])/2)), int(np.ceil((max_width - shape[1])/2)))]
-        pad_batch.append((
-            np.pad(item[0], [(0,0)] + padding, 'constant'),
-            np.pad(item[1], padding, 'constant')))
+        if len(item) == 2: # no weight
+            pad_batch.append((
+                np.pad(item[0], [(0,0)] + padding, 'constant'),
+                np.pad(item[1], padding, 'constant')))
+        else:
+            pad_batch.append((
+                np.pad(item[0], [(0,0)] + padding, 'constant'),
+                np.pad(item[1], padding, 'constant'),
+                np.pad(item[2], padding, 'constant')))
     
     return data.dataloader.default_collate(pad_batch)
 
 
 def get_dataloader(data_dir, batch_size, input_channels="RG",
-                   shuffle=True, transform=None, target_transform=None, 
-                   num_workers=1):
+                   shuffle=True,  use_weights=False,
+                   transform=None, target_transform=None, num_workers=1):
     """
     Return a dataloader with the data in the given directory.
     
@@ -162,24 +199,32 @@ def get_dataloader(data_dir, batch_size, input_channels="RG",
             for Red and Green.
         shuffle: bool (default = True)
             If True, the data is shuffled before being returned as batches.
+        use_weights: bool (default = False)
+            If True, will look for weight images and add them to the dataloaders.
         transform: callable (default = None)
             Transformation to apply to the input images.
         target_transform: callable (default = None)
-            Transformation to apply to the target images.
+            Transformation to apply to the target (and weight) images.
         num_workers: int (default = 1)
             Number of workers for the PyTorch Dataloader.
-            
+    
     Returns:
         A dataloader that generates tuples (input, target).
     """
-    x, y = get_filenames(data_dir)
-    dataset = ImageLoaderDataset(x, y, input_channels=input_channels,
-                                 transform=transform, target_transform=target_transform)
+    if use_weights:
+        x, y, w = get_filenames(data_dir, use_weights=use_weights)
+    else:
+        x, y = get_filenames(data_dir)
+        w = None
+    dataset = ImageLoaderDataset(x, y, w, input_channels=input_channels,
+                                 transform=transform, 
+                                 target_transform=target_transform)
     return data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
                            collate_fn=_pad_collate, num_workers=num_workers)
 
 
 def get_all_dataloaders(data_dir, batch_size, input_channels="RG", test_dataloader=False,
+                        use_weights=False,
                         synthetic_data=False, synthetic_ratio=None, synthetic_only=False,
                         train_transform=None, train_target_transform=None,
                         eval_transform=None, eval_target_transform=None):
@@ -198,6 +243,8 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="RG", test_dataload
             for Red and Green.
         test_dataloader: bool (default = False)
             If True, the dictionary will contain the test loader under "test".
+        use_weights: bool (default = False)
+            If True, will look for weight images and add them to the dataloaders.
         synthetic_data: bool (default = False)
             If True, the train loader will contain the synthetic data.
             See synthetic_ratio for choosing the proportion of synthetic data.
@@ -218,11 +265,11 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="RG", test_dataload
         train_transform: callable (default = None)
             Transformation to apply to the train input images.
         train_target_transform: callable (default = None)
-            Transformation to apply to the train target images.
+            Transformation to apply to the train target (and weight) images.
         eval_transform: callable (default = None)
             Transformation to apply to the validation/test input images.
         eval_target_transform: callable (default = None)
-            Transformation to apply to the validation/test target images.
+            Transformation to apply to the validation/test target (and weight) images.
     
     Returns:
         A dictionary with the train, validation and (optional) test dataloaders
@@ -286,6 +333,7 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="RG", test_dataload
             batch_size=batch_size,
             input_channels=input_channels,
             shuffle=True,
+            use_weights=use_weights,
             transform=train_transform,
             target_transform=train_target_transform
     )
@@ -294,6 +342,7 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="RG", test_dataload
             batch_size=batch_size,
             input_channels=input_channels,
             shuffle=False,
+            use_weights=use_weights,
             transform=eval_transform,
             target_transform=eval_target_transform
     )
@@ -303,6 +352,7 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="RG", test_dataload
                 batch_size=batch_size,
                 input_channels=input_channels,
                 shuffle=False,
+                use_weights=use_weights,
                 transform=eval_transform,
                 target_transform=eval_target_transform
         )

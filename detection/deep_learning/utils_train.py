@@ -114,17 +114,24 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
                 running_metrics[key] = 0
             
             # Iterate over the data
-            for i, (batch_x_cpu, batch_y_cpu) in enumerate(dataloaders[phase]): 
-                # Copy tensor to the model device
-                batch_x = batch_x_cpu.to(model.device)
+            for i, batch in enumerate(dataloaders[phase]): 
+                # Extract items from batch and send to model device
+                batch_x = batch[0].to(model.device)
+                batch_y_cpu = batch[1]
                 batch_y = batch_y_cpu.to(model.device)
+                if len(batch) == 3: # pixel-wise weights
+                    batch_w = batch[2]
+                else:
+                    batch_w = None
+                if batch_w is not None:
+                    batch_w = batch_w.to(model.device)
                 
                 with torch.set_grad_enabled(phase == "train"):
                     # Forward pass
                     y_pred = model(batch_x)
                     
                     # Loss
-                    loss = loss_fn(y_pred, batch_y)
+                    loss = loss_fn(y_pred, batch_y, batch_w)
                     running_loss += loss.item() * batch_x.shape[0]
                     
                     # Metrics
