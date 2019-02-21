@@ -227,13 +227,13 @@ if __name__ == "__main__":
     parser.add_argument(
             '--data_dir',
             type=str,
-            default="/data/talabot/dataset/", 
+            default="/data/talabot/pdm/dataset/", 
             help="directory to the train, validation, and test data. It should contain "
             "train/, validation/, and test/ subdirs (test/ is not mandatory, see --eval_test). "
             "These should be structured as: "
             "train_dir-->subdirs-->rgb_frames: folder with input images; and "
             "train_dir-->subdirs-->seg_frames: folder with target images; and (optional, see --pixel_weight)"
-            "train_dir-->subdirs-->wgt_frames: folder with weight images (default=/data/talabot/dataset/)"
+            "train_dir-->subdirs-->wgt_frames: folder with weight images (default=/data/talabot/pdm/dataset/)"
     )
     parser.add_argument(
             '--epochs', 

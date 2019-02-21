@@ -27,7 +27,7 @@ def main():
             batch_size = 32,
             crop_dice = False,
             data_aug = False,
-            data_dir = "/data/talabot/dataset_cv-annotated/",
+            data_dir = "/data/talabot/pdm/dataset_cv-annotated/",
             epochs = n_epochs,
             eval_test = False,
             input_channels = "R",

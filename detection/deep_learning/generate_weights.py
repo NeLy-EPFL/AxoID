@@ -20,7 +20,7 @@ from utils_common.image import imread_to_float, to_npint
 
 
 if __name__ == "__main__":
-    data_dir = "/data/talabot/dataset/"
+    data_dir = "/data/talabot/pdm/dataset/"
     
     for set in ["train", "validation", "test", "synthetic_2-6_181205"]:
         # Pass the synthetic folder (which is a soft link)

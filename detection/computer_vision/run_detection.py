@@ -24,7 +24,7 @@ def main(args, thresholding_fn, registration, selem, datadir=None):
         
     # Parameters
     if datadir is None:
-        datadir = "/data/talabot/dataset/validation/"
+        datadir = "/data/talabot/pdm/dataset/validation/"
     scale_dice = 4.0 # scale of the cropping (w.r.t. ROI's bounding box) for cropped dice
     
     if args.save:
@@ -111,4 +111,4 @@ if __name__ == "__main__":
         args.result_dir = os.path.join("results_CV/", phase)
         print("\nProcessing %s set:" % phase)
         main(args, filters.threshold_otsu, registration=False, selem=disk(1), 
-             datadir=os.path.join("/data/talabot/dataset/", phase))
+             datadir=os.path.join("/data/talabot/pdm/dataset/", phase))
