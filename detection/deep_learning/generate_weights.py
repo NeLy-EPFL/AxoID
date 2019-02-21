@@ -20,9 +20,9 @@ from utils_common.image import imread_to_float, to_npint
 
 
 if __name__ == "__main__":
-    data_dir = "/data/talabot/dataset_cv-annotated/"
+    data_dir = "/data/talabot/dataset/"
     
-    for set in sorted(os.listdir(data_dir)):
+    for set in ["train", "validation", "test", "synthetic_2-6_181205"]:
         # Pass the synthetic folder (which is a soft link)
         if set == "synthetic":
             continue
