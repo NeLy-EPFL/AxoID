@@ -22,13 +22,13 @@ from utils_common.image import to_npint
 from utils_common.processing import flood_fill
 
 
-# Following are pre-computed on real data (dating of 21 Feb 2019). See stats_190221.pkl & README.md.
-_BKG_MEAN_R = 0.04061809239988313 # mean value of red background
-_BKG_MEAN_G = 0.03090710807146899 # mean value of red background
+# Following are pre-computed on real data. See stats_###.pkl & README.md.
+_BKG_MEAN_R = 0.04061809239988313 # mean value of red background (190222)
+_BKG_MEAN_G = 0.03090710807146899 # mean value of red background (190222)
 _BKG_STD = 0.005 # Standard deviation of mean value of background (empirically tuned)
-_ROI_MAX_1 = 0.12608310520785726 # fraction of red ROI with 1 as max intensity
-_ROI_MAX_MEAN = 0.5560949652737859 # mean of red ROI max (excluding 1.0)
-_ROI_MAX_STD = 0.1795409180323788 # std of red ROI max (excluding 1.0)
+_ROI_MAX_1 = 0.2276730082246407 # fraction of red ROI with 1 as max intensity (181121)
+_ROI_MAX_MEAN = 0.6625502112855037 # mean of red ROI max (excluding 1.0) (181121)
+_ROI_MAX_STD = 0.13925117610178622 # std of red ROI max (excluding 1.0) (181121)
 
 
 def synthetic_stack(shape, n_images, n_neurons):
