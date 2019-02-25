@@ -11,7 +11,7 @@ Created on Wed Feb 20 16:57:32 2019
 @author: nicolas
 """
 
-import os, warnings
+import os, warnings, argparse
 import numpy as np
 import scipy.ndimage as ndi
 from skimage import io
@@ -20,9 +20,24 @@ from utils_common.image import imread_to_float, to_npint
 
 
 if __name__ == "__main__":
-    data_dir = "/data/talabot/pdm/dataset/"
+    parser = argparse.ArgumentParser(description="Generate weights for pixel-wise"
+                                     "loss weighting.")
+    parser.add_argument(
+            '--data_dir',
+            type=str, 
+            help="directory to the experiments folder. If not set, will use the"
+            "one in the code."
+    )
+    args = parser.parse_args()
     
-    for set in ["train", "validation", "test", "synthetic_2-6_181205"]:
+    if args.data_dir is None:
+        data_dir = "/data/talabot/pdm/dataset/"
+        sets = ["train", "validation", "test", "synthetic_2-6_181205"]
+    else:
+        data_dir = args.data_dir
+        sets = [""]
+    
+    for set in sets:
         # Pass the synthetic folder (which is a soft link)
         if set == "synthetic":
             continue
