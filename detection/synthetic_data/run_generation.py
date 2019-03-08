@@ -395,7 +395,7 @@ if __name__ == "__main__":
         print("Creating stack %d/%d" % (i + 1, n_stacks), end="")
         print("  - folder:", folder)
         
-        synth_stack, synth_seg = synthetic_stack(shape, n_images, n_neurons)
+        synth_stack, synth_seg = synthetic_stack(shape, n_images, n_neurons, cyan_gcamp=True)
         
         os.makedirs(folder, exist_ok=True)
         os.makedirs(os.path.join(folder, "rgb_frames"), exist_ok=True)
