@@ -77,7 +77,7 @@ def preprocess_stack(stack):
     filtered_stack = median_filter(stack, disk(1))
     return morph_open(filtered_stack, disk(1))
 
-def flood_fill(image):
+def flood_fill(image, fill_val=1):
     """Fill the contours in image using openCV's flood-fill algorithm."""
     image_out = image.astype(np.uint8)
     
@@ -89,10 +89,11 @@ def flood_fill(image):
     cv2.floodFill(image_out, mask, (0,0), 1)
     
     # Invert filled image
-    image_out = np.logical_not(image_out)
+    mask = image_out == 0
     
     # Combine contours with filled ROI
-    image_out = np.logical_or(image_out, image)
+    image_out = image.astype(np.uint8)
+    image_out[mask] = fill_val
     
     return image_out
 
