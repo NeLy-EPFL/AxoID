@@ -3,6 +3,10 @@
 """
 Script to generate the synthetic dataset for the training.
 See synthetic_generation.ipynb for more details.
+
+/!\ There are a lot of hard coded numbers. These were empirically tuned so that
+the synthetic data looks like real data.
+
 Created on Thu Nov 22 10:01:56 2018
 
 @author: nicolas
@@ -40,7 +44,7 @@ with open("GCaMP_kernel.pkl", "rb") as f:
     kernel_f, kernel_s = pickle.load(f)
 
 
-def create_neurons(n_neurons, shape):
+def create_neurons(n_neurons, shape, return_label):
     """Return gaussian and segmentation images corresponding to neurons."""
     ellipse_size = 1.5 # factor for the ground truth ellipse (normalized by std)
     # Meshgrid for the gaussian weights
@@ -49,7 +53,10 @@ def create_neurons(n_neurons, shape):
     meshgrid[:,:,0], meshgrid[:,:,1] = np.meshgrid(cols, rows) # note the order
     
     gaussians = np.zeros((n_neurons,) + shape)
-    neuron_segs = np.zeros((n_neurons,) + shape, dtype=np.bool)
+    if return_label:
+        neuron_segs = np.zeros((n_neurons,) + shape, dtype=np.uint8)
+    else:
+        neuron_segs = np.zeros((n_neurons,) + shape, dtype=np.bool)
     for i in range(n_neurons):
         # Loop until the randomly generated neuron is in the image 
         # and doesn't overlap with another (can theoretically loop to infinity if too many neurons)
@@ -77,11 +84,11 @@ def create_neurons(n_neurons, shape):
                 # Check if overlapping/touching with any existing neuron
                 tmp_mask = np.zeros(shape, dtype=np.bool)
                 tmp_mask[rr,cc] = 1
-                if (neuron_segs[i, morph.dilation(tmp_mask)] == True).any():
+                if (neuron_segs[i, morph.dilation(tmp_mask)] != 0).any():
                     continue
                 else:
                     break
-        neuron_segs[i, rr, cc] = True
+        neuron_segs[i, rr, cc] = 1 + i * return_label
         
         # Create gaussian weight image
         gaussians[i,:,:] = multivariate_normal.pdf(meshgrid, mean, cov)
@@ -90,10 +97,10 @@ def create_neurons(n_neurons, shape):
     return gaussians, neuron_segs
 
 
-def get_flurophores(n_neurons, n_images):
+def get_flurophores(n_neurons, n_images, gcamp_type):
     """Return the tdTomato level, and GCaMP dynamics."""
     fps = 2.4 # synthetic frame per seconds
-    # Choose which fluorophores are present for each neuron
+    # Choose which fluorophores are expressed for each neuron
     c_presence = np.array([[True, True], [True, False], [False, True]], dtype=np.bool)
     channel_neurons = c_presence[np.random.choice(len(c_presence), size=n_neurons, p=[0.9, 0.05, 0.05]), :]
     
@@ -113,10 +120,12 @@ def get_flurophores(n_neurons, n_images):
     # GCaMP: create dynamics through time of the neurons
     gcamp_dynamics = np.zeros((n_neurons, n_images))
     # GCaMP type (50% 6f and 50% 6s)
-    if np.random.rand() < 0.5: # GCaMP6f
+    if gcamp_type == "6f": # GCaMP6f
         kernel_gcamp = kernel_f
-    else: # GCaMP6s
+    elif gcamp_type == "6s": # GCaMP6s
         kernel_gcamp = kernel_s
+    else:
+        raise ValueError("Unknown GCaMP type '{}'.".format(gcamp_type))
     t = np.arange(np.ceil(n_images / fps) * 1000) / 1000 # timesteps in ms
     for i in range(n_neurons):
         if channel_neurons[i, 1] == False:
@@ -174,8 +183,15 @@ def deform_neurons(n_neurons, shape, gaussians, neuron_segs):
     for i in range(n_neurons):
         # Normalize the gaussians
         wrp_gaussian[i] /= wrp_gaussian[i].sum()
+        # If warping the segmentation created multiple ROIs, only keep the largest one
+        labels, num = measure.label(wrp_seg[i], connectivity=1, return_num=True)
+        if num > 1:
+            regions = measure.regionprops(labels)
+            areas = [region.area for region in regions]
+            largest_label = regions[np.argmax(areas)].label
+            wrp_seg[i][labels != largest_label] = 0
         # Fill the possible holes in the warped segmentation
-        wrp_seg[i] = flood_fill(np.pad(wrp_seg[i], 1, 'constant'))[1:-1, 1:-1]
+        wrp_seg[i] = flood_fill(np.pad(wrp_seg[i], 1, 'constant'), fill_val=wrp_seg[i].max())[1:-1, 1:-1]
             
     return wrp_gaussian, wrp_seg
 
@@ -185,27 +201,32 @@ def sample_neurons(i, n_neurons, shape, n_samples, wrp_gaussian, wrp_seg,
     """Sample from the gaussians defining neurons for frame `i`."""
     wrp_neuron = np.zeros(shape + (3,), dtype=wrp_gaussian.dtype)
     for j in range(n_neurons):
+        # Only sample if neuron is in image
+        if wrp_seg[j].max() == 0:
+            continue
         for c in [0,1]:
             if c == 0:
                 max_neuron = tdTom_max[j]
             elif c == 1:
                 max_neuron = gcamp_dynamics[j,i]
-            # Only if channel is present and non-0, and neuron in the image
-            if max_neuron == 0 or wrp_seg[j].sum() == 0: 
+            # Only if channel is not 0 (with a tolerance)
+            if max_neuron < 1e-8: 
                 continue
             # Sample from gaussians
             # Sampling is adjusted for neuron's intensity, size, and laser gain
-            if laser_gain < _GAIN_T or c == 0: # low gain or tdTomato, no saturation nor reduced sampling
+            if laser_gain < _GAIN_T or c == 0: # low gain or tdTomato, no reduced sampling by laser gain
                 x = np.random.choice(np.arange(shape[0] * shape[1]), 
                                      size=int(n_samples[j,c] * \
-                                              max_neuron ** 0.5 * (wrp_seg[j].sum() / 150)), 
+                                              max_neuron ** 0.5 * (np.count_nonzero(wrp_seg[j]) / 150)), 
                                      p=wrp_gaussian[j].ravel())
             else: # high gain, reduced sampling
                 x = np.random.choice(np.arange(shape[0] * shape[1]), 
                                      size=int(n_samples[j,c] * (1 - 0.5 * (laser_gain - _GAIN_T) / (1 - _GAIN_T)) * \
-                                              max_neuron ** 0.5 * (wrp_seg[j].sum() / 150)), 
+                                              max_neuron ** 0.5 * (np.count_nonzero(wrp_seg[j]) / 150)), 
                                      p=wrp_gaussian[j].ravel())
-
+            # If no sampling (area too small, low intensity, and high gain for e.g.), continue 
+            if x.size == 0:
+                continue
             y, x = np.unravel_index(x, shape)
             hist = plt.hist2d(x, y, bins=[shape[1], shape[0]], range=[[0, shape[1]], [0, shape[0]]])[0]
             plt.close()
@@ -224,38 +245,54 @@ def sample_neurons(i, n_neurons, shape, n_samples, wrp_gaussian, wrp_seg,
     return wrp_neuron
 
 
-def reduce_with_border(n_neurons, wrp_seg):
+def reduce_with_border(wrp_seg, return_label):
     """Reduce the segmentation to one image, while making sure ROIs are separated."""
+    # Compute number of neurons inside the frame
+    n_neurons = 0
+    for j in range(wrp_seg.shape[0]):
+        if np.count_nonzero(wrp_seg[j]) > 0:
+            n_neurons += 1
     # Make sure that touching warped neurons are not segmented together
     # and reduce the segmentation to one image per frame
-    _, num = measure.label(wrp_seg.max(0), return_num=True, connectivity=1)
+    _, num = measure.label(wrp_seg.max(0).astype(np.bool), return_num=True, connectivity=1)
     if num < n_neurons:
         # If so, introduce a background border with watershed
-        dist = np.zeros((n_neurons,) + shape)
-        for j in range(n_neurons):
-            dist[j] = ndi.distance_transform_edt(wrp_seg[j])
-        distance = ndi.distance_transform_edt(wrp_seg.max(0))
+        dist = []
+        dist_label = []
+        for j in range(wrp_seg.shape[0]):
+            if np.count_nonzero(wrp_seg[j]) == 0:
+                continue
+            dist.append(ndi.distance_transform_edt(wrp_seg[j]))
+            dist_label.append(wrp_seg[j].max())
+        dist = np.array(dist)
 
         local_maxi = np.zeros(shape, dtype=np.uint8)
-        for j in range(n_neurons):
+        for j in range(dist.shape[0]):
             r,c = np.unravel_index(np.argmax(dist[j], axis=None), dist[j].shape)
-            local_maxi[r,c] = 1
+            local_maxi[r,c] = dist_label[j]
 
-        markers = measure.label(local_maxi, connectivity=1)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            labels = morph.watershed(-distance, markers, mask=wrp_seg.max(0), watershed_line=True)
-        wrp_seg = labels.astype(np.bool)
+            labels = morph.watershed(-dist.max(0), local_maxi, mask=wrp_seg.max(0).astype(np.bool), 
+                                     watershed_line=True)
+        if return_label:
+            wrp_seg = labels
+        else:
+            wrp_seg = labels.astype(np.bool)
     else:
         wrp_seg = wrp_seg.max(0)
     
     return wrp_seg
 
 
-def warp_neurons(n_images, n_neurons, shape, gaussians, neuron_segs,
-                 tdTom_max, gcamp_dynamics, laser_gain, n_samples, cyan_gcamp):
+def warp_neurons(n_images, n_neurons, shape, gaussians, neuron_segs, return_label,
+                 tdTom_max, gcamp_dynamics, laser_gain, cyan_gcamp):
     """Return the warped and sampled neurons and segmentations."""
-    wrp_segs = np.zeros((n_images,) + shape, dtype=np.bool)
+    # Number of samples for each neuron (empirically tuned)
+    n_samples = np.random.normal(loc=1000, scale=200, size=n_neurons * 2).reshape([-1, 2])
+    n_samples = (n_samples + 0.5).astype(np.uint16)
+    
+    wrp_segs = np.zeros((n_images,) + shape, dtype=neuron_segs.dtype)
     wrp_neurons = np.zeros((n_images,) + shape + (3,), dtype=gaussians.dtype)
     for i in range(n_images):
         # Deform gaussians and segmentations
@@ -266,7 +303,7 @@ def warp_neurons(n_images, n_neurons, shape, gaussians, neuron_segs,
                                         tdTom_max, gcamp_dynamics, laser_gain)
         
         # Reduce segmentations to one image
-        wrp_segs[i] = reduce_with_border(n_neurons, wrp_seg)
+        wrp_segs[i] = reduce_with_border(wrp_seg, return_label)
         
     # Make GCaMP cyan if applicable
     if cyan_gcamp:
@@ -312,7 +349,7 @@ def create_noise(n_images, shape, laser_gain, cyan_gcamp):
     return noise
 
 
-def synthetic_stack(shape, n_images, n_neurons, cyan_gcamp=False):
+def synthetic_stack(shape, n_images, n_neurons, cyan_gcamp=False, return_label=False):
     """
     Return a stack of synthetic neural images.
     
@@ -323,38 +360,43 @@ def synthetic_stack(shape, n_images, n_neurons, cyan_gcamp=False):
             Number of images in the stack.
         n_neurons: int
             Number of neurons to be present on the stack.
-        cyan_gcamp: bool
+        cyan_gcamp: bool (default = False)
             If True, the GCaMP will appear cyan (same in green and blue channel).
             Else, it will be green.
+        return_label: bool (default = False)
+            If True, synth_seg will be the labels of the neurons instead of just
+            their segmentations.
             
     Returns:
         synth_stack: ndarray of shape NxHxWx3
             Stack of N synthetic images.
         synth_seg: ndarray of shape NxHxW
-            Stack of N synthetic segmentations.
+            Stack of N synthetic segmentations (or label, see `return_label`).
     """ 
     ## Initialization
-    # Number of samples for each neuron (empirically tuned)
-    n_samples = np.random.normal(loc=1000, scale=200, size=n_neurons * 2).reshape([-1, 2])
-    n_samples = (n_samples + 0.5).astype(np.uint16)
+    # GCaMP type (50% 6f and 50% 6s)
+    if np.random.rand() < 0.5:
+        gcamp_type = "6f"
+    else: # GCaMP6s
+        gcamp_type = "6s"
     # Laser gain, from 0 to 1 <=> low to high
     laser_gain = 1 - 0.5 * signal.gaussian(100, 20)
     laser_gain = np.random.choice(np.arange(100) / 100, p=laser_gain / laser_gain.sum())
     
-    ## Create the gaussians representing the neurons
-    gaussians, neuron_segs = create_neurons(n_neurons, shape)
+    # Create the gaussians representing the neurons
+    gaussians, neuron_segs = create_neurons(n_neurons, shape, return_label)
     
     # Choose which channels are present in each neurons
-    tdTom_max, gcamp_dynamics = get_flurophores(n_neurons, n_images)
+    tdTom_max, gcamp_dynamics = get_flurophores(n_neurons, n_images, gcamp_type)
     
-    ## Warp neurons for each image to create the stack
-    wrp_neurons, wrp_segs = warp_neurons(n_images, n_neurons, shape, gaussians, neuron_segs, 
-                                         tdTom_max, gcamp_dynamics, laser_gain, n_samples, cyan_gcamp)
+    # Warp neurons for each image to create the stack
+    wrp_neurons, wrp_segs = warp_neurons(n_images, n_neurons, shape, gaussians, neuron_segs, return_label,
+                                         tdTom_max, gcamp_dynamics, laser_gain, cyan_gcamp)
                     
-    ## Add background noise
+    # Add background noise
     noise = create_noise(n_images, shape, laser_gain, cyan_gcamp)
     
-    ## Put neurons and noise together
+    # Put neurons and noise together
     synth_stack = np.maximum(wrp_neurons, noise)
     for c in [0,1,2]:
         if c == 2 and cyan_gcamp is False:
@@ -362,7 +404,7 @@ def synthetic_stack(shape, n_images, n_neurons, cyan_gcamp=False):
         synth_stack[...,c] /= synth_stack[...,c].max()
     synth_seg = wrp_segs
     
-    ## Random gamma correction (image should be in [0,1] range)
+    # Random gamma correction (image should be in [0,1] range)
     gamma = np.random.rand() * 0.6 + 0.7 # in [0.7, 1.3)
     synth_stack = exposure.adjust_gamma(synth_stack, gamma=gamma)
     
@@ -395,21 +437,25 @@ if __name__ == "__main__":
         print("Creating stack %d/%d" % (i + 1, n_stacks), end="")
         print("  - folder:", folder)
         
-        synth_stack, synth_seg = synthetic_stack(shape, n_images, n_neurons, cyan_gcamp=True)
+        synth_stack, synth_seg = synthetic_stack(shape, n_images, n_neurons, 
+                                                 cyan_gcamp=True, return_label=True)
         
         os.makedirs(folder, exist_ok=True)
         os.makedirs(os.path.join(folder, "rgb_frames"), exist_ok=True)
         os.makedirs(os.path.join(folder, "seg_frames"), exist_ok=True)
+        os.makedirs(os.path.join(folder, "lbl_frames"), exist_ok=True)
         
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             # Save full stacks
             io.imsave(os.path.join(folder, "RGB.tif"), to_npint(synth_stack))
-            io.imsave(os.path.join(folder, "seg_ROI.tif"), to_npint(synth_seg))
+            io.imsave(os.path.join(folder, "seg_ROI.tif"), to_npint(synth_seg.astype(np.bool)))
+            io.imsave(os.path.join(folder, "lbl_ROI.tif"), to_npint(synth_seg))
             # Save image per image
             for j in range(n_images):
                 io.imsave(os.path.join(folder, "rgb_frames", "rgb_{:04}.png".format(j)), to_npint(synth_stack[j]))
-                io.imsave(os.path.join(folder, "seg_frames", "seg_{:04}.png".format(j)), to_npint(synth_seg[j]))
+                io.imsave(os.path.join(folder, "seg_frames", "seg_{:04}.png".format(j)), to_npint(synth_seg[j].astype(np.bool)))
+                io.imsave(os.path.join(folder, "lbl_frames", "lbl_{:04}.png".format(j)), to_npint(synth_seg[j]))
     
     duration = time.time() - start
     print("\nScript took {:02.0f}min {:02.0f}s.".format(duration // 60, duration % 60))
