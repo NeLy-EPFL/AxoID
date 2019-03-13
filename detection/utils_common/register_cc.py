@@ -10,9 +10,9 @@ Created on Mon Oct 29 10:13:11 2018
 import numpy as np
 
 
-def _compute_shifts(ref_image, shifted_image, return_error=False):
+def compute_shifts(ref_image, shifted_image, return_error=False):
     """
-    Compute and return the row and column shifts between the reference and shifted images.
+    Compute and return the row and column shifts between the shifted and reference images.
     
     Note that shift are going from `shifted_image` to `ref_image`, i.e. shifting
     `shifted_image` by row and col shifts will give back `ref_image`.
@@ -36,8 +36,8 @@ def _compute_shifts(ref_image, shifted_image, return_error=False):
             The normalized root-mean-square error between `ref_image` 
             and `shifted_image`
     
-    Translated by #TODO: from MATLAB code written by Manuel Guizar, downloaded 
-    from http://www.mathworks.com/matlabcentral/fileexchange/18401-efficient-subpixel-image-registration-by-cross-correlation
+    Translated from MATLAB code written by Manuel Guizar, downloaded from
+    http://www.mathworks.com/matlabcentral/fileexchange/18401-efficient-subpixel-image-registration-by-cross-correlation
     """
     # Compute FFTs, and cross-correlation
     buf1ft = np.fft.fft2(ref_image)
@@ -82,20 +82,23 @@ def _compute_shifts(ref_image, shifted_image, return_error=False):
 
 def shift_image(image, row_shift, col_shift):
     """Shift the image by the given row and col shifts."""
-    buf2ft = np.fft.fft2(image)
-    nr, nc = buf2ft.shape
+    buf2ft = np.fft.fft2(image, axes=(0, 1))
+    nr, nc = buf2ft.shape[:2]
 
     # Compute registered version of buf2ft
     Nr = np.fft.ifftshift(np.arange(-np.fix(nr/2.0), np.ceil(nr/2.0)));
     Nc = np.fft.ifftshift(np.arange(-np.fix(nc/2.0), np.ceil(nc/2.0)));
     [Nc, Nr] = np.meshgrid(Nc, Nr)
     
-    greg = buf2ft * np.exp(2j * np.pi * (-row_shift * Nr/nr - col_shift * Nc/nc));
+    if image.ndim == 3:
+        greg = buf2ft * np.exp(2j * np.pi * (-row_shift * Nr/nr - col_shift * Nc/nc))[...,np.newaxis]
+    else:
+        greg = buf2ft * np.exp(2j * np.pi * (-row_shift * Nr/nr - col_shift * Nc/nc))
 
     if np.can_cast(np.float32, image.dtype): # need to check this, too
-        shifted_image = np.abs(np.fft.ifft2(greg))
+        shifted_image = np.abs(np.fft.ifft2(greg, axes=(0, 1)))
     else:
-        shifted_image = np.round(np.abs(np.fft.ifft2(greg))).astype(image.dtype)
+        shifted_image = np.round(np.abs(np.fft.ifft2(greg, axes=(0, 1)))).astype(image.dtype)
 
     return shifted_image
 
@@ -146,7 +149,7 @@ def register_stack(stack, ref_num=0, channels=[0,1], return_shifts=False):
     for i in range(0, len(stack_to_reg)): 
         img = stack_to_reg[i]
     
-        row, col = _compute_shifts(ref_img, img, return_error=False)
+        row, col = compute_shifts(ref_img, img, return_error=False)
         row_list.append(row)
         col_list.append(col)
     

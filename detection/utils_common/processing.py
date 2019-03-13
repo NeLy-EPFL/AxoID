@@ -97,13 +97,11 @@ def flood_fill(image, fill_val=1):
     
     return image_out
 
-def nlm_denoising(rgb_stack, img_id=None, registration=False):
+def nlm_denoising(rgb_stack, img_id=None, h_red=11, h_green=11, registration=False):
     """Apply Non-Local means denoising to the stack, or the specific image if 
     img_id is given."""
     temporal_window_size = 5
     search_window_size = 21
-    h_red = 11
-    h_green = 11
     
     stack = to_npint(rgb_stack)
     if registration:
