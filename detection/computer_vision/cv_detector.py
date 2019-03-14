@@ -8,52 +8,30 @@ Created on Mon Dec 10 14:52:18 2018
 """
 
 import numpy as np
-import cv2
 from skimage import measure, filters
 from skimage import morphology as morph
 from skimage.morphology import disk
 
 from utils_common.image import to_npint
-from utils_common.multi_processing import run_parallel
 from utils_common.register_cc import register_stack, shift_image
+from utils_common.processing import nlm_denoising
 
 
-def cv_detect(rgb_stack, thresholding_fn=filters.threshold_otsu, 
+def cv_detect(rgb_stack, h_red=11, h_green=11,
+              thresholding_fn=filters.threshold_otsu, 
               registration=False, selem=disk(1)):
     """Use computer vision to detect ROI in given RGB stack."""
-    min_area = 6
-    temporal_window_size = 5
-    search_window_size = 21
-    h_red = 11
-    h_green = 11
+    min_area = 6 # minimum area in pixel for an ROI
+    
     
     stack = to_npint(rgb_stack)
     if registration:
         stack, reg_rows, reg_cols = register_stack(stack, channels=[0,1], return_shifts=True)
     
-    # Loop the stack so that masks can be made for first and last images
-    loop_stack = np.concatenate((stack[- (temporal_window_size - 1)//2:], 
-                                 stack, 
-                                 stack[:(temporal_window_size - 1)//2]))
-    
-    # Denoise each channel
-    def denoise_stack(channel_num, h_denoise):
-        """Denoise selected channel from loop_stack (function used for parallelization)."""
-        loop_channel = loop_stack[..., channel_num]
-        denoised = np.zeros(stack[...,0].shape, dtype=loop_channel.dtype)
-        for i in range(len(stack)):
-            denoised[i] = cv2.fastNlMeansDenoisingMulti(loop_channel, i + (temporal_window_size - 1)//2, 
-                    temporal_window_size, None, h_denoise, 7, search_window_size)
-        return denoised
-    
-    denoised_r, denoised_g = run_parallel(
-        lambda: denoise_stack(0, h_red),
-        lambda: denoise_stack(1, h_green)
-    )
-    denoised = np.maximum(denoised_r, denoised_g)
+    denoised = nlm_denoising(stack, h_red=h_red, h_green=h_green)
     
     output = np.zeros(stack.shape[:-1], dtype=np.bool)
-    for i in range(len(stack)):
+    for i in range(len(rgb_stack)):
         # Segmentation
         denoised_pp = filters.gaussian(denoised[i], sigma=2)
         seg = denoised_pp > thresholding_fn(denoised_pp)
