@@ -15,7 +15,7 @@ import torch
 
 
 def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metrics=None,
-          criterion_metric="loss", model_dir=None, replace_dir=True, verbose=1):
+          criterion_metric=None, model_dir=None, replace_dir=True, verbose=1):
     """
     Train the model, and return the best found, as well as the training history.
     
@@ -40,11 +40,12 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
             Dictionary of metrics to be computed over the data. It should take 
             3 tensors as input (predictions, targets, and masks), and output a 
             scalar tensor. Keys should be their name, value the callable.
-        criterion_metric: str (default = "loss")
-            Name of the metric to use for early stopping. It can be "loss", in
-            this case, it is based on the highest negative loss. Otherwise, it
-            should be the same as the key in the `metrics` dictionary.
-            Note that it is automatically based on the validation set.
+        criterion_metric: str (default = None)
+            Name of the metric to use for early stopping. If None, no early
+            stopping occurs, and the last model is return as best found.
+            It can be "loss", in this case, it is based on the highest negative
+            loss. Otherwise, it should be the same as the key in the `metrics` 
+            dictionary. Note that it is automatically based on the validation set.
         model_dir: str (default = None)
             Directory/path of the folder in which the best model is saved.
             If None, the model won't be saved.
@@ -61,8 +62,9 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
             Dictionary with the training history. Validation keys are like 
             their training counterparts, with the prefix "val_".
     """
-    best_val_criterion = -np.inf
-    best_epoch = -1
+    if criterion_metric is not None:
+        best_val_criterion = -np.inf
+        best_epoch = -1
     
     # If no model folder for saving, create a temporary one
     if model_dir is None:
@@ -173,15 +175,19 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
                 print(phase_msg)
             
         # Copy the model if best found so far
-        criterion_val = history["val_" + criterion_metric][-1]
-        if criterion_metric == "loss":
-            criterion_val *= -1.0
-        
-        if criterion_val > best_val_criterion:
-            best_val_criterion = criterion_val
-            best_epoch = epoch
+        if criterion_metric is None:
             # Save model state dict
             torch.save(model.state_dict(), os.path.join(save_dir, "model_best.pth"))
+        else: # simulate early stopping
+            criterion_val = history["val_" + criterion_metric][-1]
+            if criterion_metric == "loss":
+                criterion_val *= -1.0
+            
+            if criterion_val > best_val_criterion:
+                best_val_criterion = criterion_val
+                best_epoch = epoch
+                # Save model state dict
+                torch.save(model.state_dict(), os.path.join(save_dir, "model_best.pth"))
         
         if verbose:
             print()
@@ -190,14 +196,19 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
         duration = time.time() - start_time
         duration_msg = "{:.0f}h {:02.0f}min {:02.0f}s".format(duration // 3600, (duration // 60) % 60, duration % 60)
         print("Training took %s." % duration_msg)
-        print("Best validation {} = {:.3f} at epoch {}.".format(
-                criterion_metric, best_val_criterion, best_epoch + 1))
-        print("According validation loss = {:.3f}".format(history["val_loss"][best_epoch]),
-              end="")
-        for key in metrics.keys():
-            if key == criterion_metric:
-                continue
-            print(" - {} = {:.3f}".format(key, history["val_"+key][best_epoch]), end="")
+        if criterion_metric is None:
+            print("Final validation loss = {:.3f}".format(history["val_loss"][-1]), end="")
+            for key in metrics.keys():
+                print(" - {} = {:.3f}".format(key, history["val_"+key][-1]), end="")
+        else:
+            print("Best validation {} = {:.3f} at epoch {}.".format(
+                    criterion_metric, best_val_criterion, best_epoch + 1))
+            print("According validation loss = {:.3f}".format(history["val_loss"][best_epoch]),
+                  end="")
+            for key in metrics.keys():
+                if key == criterion_metric:
+                    continue
+                print(" - {} = {:.3f}".format(key, history["val_"+key][best_epoch]), end="")
         print()
     
     # Load best model, and remove tmpdir if applicable
