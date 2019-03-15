@@ -184,7 +184,7 @@ def _pad_collate(batch):
 
 def get_dataloader(data_dir, batch_size, input_channels="RG",
                    shuffle=True,  use_weights=False,
-                   transform=None, target_transform=None, num_workers=1):
+                   transform=None, target_transform=None, num_workers=4):
     """
     Return a dataloader with the data in the given directory.
     
@@ -378,3 +378,37 @@ def make_images_valid(images):
         zero_padding = torch.zeros(shape, dtype=images.dtype).to(images.device)
         images = torch.cat([images, zero_padding], 1)
     return images
+
+# Following transform is to avoid 2x2 maxpoolings on odd-sized images
+# (it makes sure down- and up-sizing are consistent throughout the network)
+def pad_transform(image, u_depth):
+    """Pad the image to assure its height and width are mutliple of 2**u_depth.
+    If RGB, format should be channels first (<=> CHW)."""
+    factor = 2 ** u_depth
+    if image.ndim == 3: # channels first
+        height, width = image.shape[1:]
+    elif image.ndim == 2:
+        height, width = image.shape
+        
+    # Do nothing if image has correct shape
+    if height % factor == 0 and width % factor == 0:
+        return image
+    
+    height_pad = (factor - height % factor) * bool(height % factor)
+    width_pad = (factor - width % factor) * bool(width % factor)
+    padding = [(int(np.floor(height_pad/2)), int(np.ceil(height_pad/2))), 
+               (int(np.floor(width_pad/2)), int(np.ceil(width_pad/2)))]
+    if image.ndim == 3: # do not pad channels
+        return np.pad(image, [(0,0)] + padding, 'constant')
+    elif image.ndim == 2:
+        return np.pad(image, padding, 'constant')
+
+def pad_transform_stack(stack, u_depth):
+    """Pad the stack to assure its height and width are mutliple of 2**u_depth.
+    If RGB, format should be channels first (<=> NCHW)."""
+    # Loop over the image and calls pad_transform()
+    # This is not optimal, but still fast enough
+    pad_stack = []
+    for i in range(len(stack)):
+        pad_stack.append(pad_transform(stack[i], u_depth))
+    return np.stack(pad_stack)

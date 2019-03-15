@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 
 import torch, torchvision
 
-from utils_data import make_images_valid
-from utils_common.image import imread_to_float, overlay_preds_targets
+from .utils_data import make_images_valid
+from .utils_common.image import imread_to_float, overlay_preds_targets
 
 
 def predict(model, dataloader, discard_target=True):
@@ -35,9 +35,10 @@ def predict(model, dataloader, discard_target=True):
     
     # Concatenate everything together
     predictions = torch.cat(predictions)
-    return predictions
+    return predictions.cpu()
     
-def predict_stack(model, stack, batch_size, input_channels="RG"):
+def predict_stack(model, stack, batch_size, input_channels="RG", 
+                  channels_last=False, transform=None):
     """Output predictions for the given image stack and model.
     
     `stack` can either be the filename (`input_channels` is then required),
@@ -47,12 +48,20 @@ def predict_stack(model, stack, batch_size, input_channels="RG"):
         stack = imread_to_float(stack, scaling=255)
         channels = {"R": stack[...,0], "G": stack[...,1], "B": stack[...,2]}
         stack = np.stack([channels[c] for c in input_channels], axis=1)
+        stack = torch.from_numpy(stack)
     elif isinstance(stack, np.ndarray):
+        if channels_last: # change to channels first
+            channels = {"R": stack[...,0], "G": stack[...,1], "B": stack[...,2]}
+            stack = np.stack([channels[c] for c in input_channels], axis=1)
         stack = torch.from_numpy(stack)
     elif isinstance(stack, torch.Tensor):
         pass
     else:
         raise TypeError("Unknown type %s for the image stack." % type(stack))
+    
+    # Apply transform if applicable
+    if transform is not None:
+        stack = torch.from_numpy(transform(stack.numpy()))
     
     predictions = []
     
@@ -66,7 +75,7 @@ def predict_stack(model, stack, batch_size, input_channels="RG"):
     
     # Concatenate everything together
     predictions = torch.cat(predictions)
-    return predictions
+    return predictions.cpu()
 
 
 def evaluate(model, dataloader, metrics):

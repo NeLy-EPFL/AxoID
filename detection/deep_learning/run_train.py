@@ -19,7 +19,7 @@ import imgaug.augmenters as iaa
 
 import torch
 
-from utils_data import get_all_dataloaders, normalize_range
+from utils_data import get_all_dataloaders, normalize_range, pad_transform
 from utils_loss import get_BCEWithLogits_loss
 from utils_metric import get_dice_metric, get_crop_dice_metric
 from utils_model import CustomUNet
@@ -59,29 +59,6 @@ def main(args, model=None):
     else:
         aug_fn = lambda x: x # identity function
     
-    # Following transform is to avoid 2x2 maxpoolings on odd-sized images
-    # (it makes sure down- and up-sizing are consistent throughout the network)
-    def pad_transform(image):
-        """Pad images to multiple of 2**u_depth, if needed."""
-        factor = 2 ** u_depth
-        if image.ndim == 3: # channels first
-            height, width = image.shape[1:]
-        elif image.ndim == 2:
-            height, width = image.shape
-            
-        # Do nothing if image has correct shape
-        if height % factor == 0 and width % factor == 0:
-            return image
-        
-        height_pad = (factor - height % factor) * bool(height % factor)
-        width_pad = (factor - width % factor) * bool(width % factor)
-        padding = [(int(np.floor(height_pad/2)), int(np.ceil(height_pad/2))), 
-                   (int(np.floor(width_pad/2)), int(np.ceil(width_pad/2)))]
-        if image.ndim == 3: # do not pad channels
-            return np.pad(image, [(0,0)] + padding, 'constant')
-        elif image.ndim == 2:
-            return np.pad(image, padding, 'constant')
-    
     ## Data preparation    
     # Create dataloaders
     dataloaders = get_all_dataloaders(
@@ -93,10 +70,10 @@ def main(args, model=None):
         synthetic_data = args.synthetic_data,
         synthetic_ratio = args.synthetic_ratio,
         synthetic_only = args.synthetic_only,
-        train_transform = lambda img: normalize_range(pad_transform(aug_fn(img))), 
-        train_target_transform = pad_transform,
-        eval_transform = lambda img: normalize_range(pad_transform(img)), 
-        eval_target_transform = pad_transform
+        train_transform = lambda img: normalize_range(pad_transform(aug_fn(img), u_depth)), 
+        train_target_transform = lambda img: pad_transform(img, u_depth),
+        eval_transform = lambda img: normalize_range(pad_transform(img, u_depth)), 
+        eval_target_transform = lambda img: pad_transform(img, u_depth)
     )
     
     N_TRAIN = len(dataloaders["train"].dataset)
