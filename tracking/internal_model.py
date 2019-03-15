@@ -7,17 +7,18 @@ Created on Thu Mar 14 15:03:31 2019
 @author: nicolas
 """
 ### TODOs:
-#   1. Add shape as an axon property ?
+#
 
 import numpy as np
-from skimage import measure, draw
+from skimage import measure
 from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
 
 
 class Axon():
     ### TODOs:
-    #   
+    #   1. Make shape as protected attribute ?
+    #   2. Change .shape name ?
     """Axon object with an identity and properties linked to 2-photon imaging."""
     
     def __init__(self, identity):
@@ -27,35 +28,60 @@ class Axon():
         self.area = None
         self.tdTom = None
         self.gcamp = np.array([])
+        self.shape = np.array([])
+        self._shape_iter = 0
+    
+    def init_shape(self, shape):
+        """Initialize the axon's shape."""
+        self.shape = shape.astype(np.float64)
+        self._shape_iter = 1
+    
+    def update_shape(self, new_shape):
+        """Update the axon shape with the new shape array."""
+        # Pad the shape images to the same size
+        height = max(self.shape.shape[0], new_shape.shape[0])
+        width = max(self.shape.shape[1], new_shape.shape[1])
+        
+        shapes = np.zeros((2, height, width), np.float64)
+        for i, image in enumerate([self.shape, new_shape.astype(np.float64)]):
+            diff_height = height - image.shape[0]
+            diff_width = width - image.shape[1]
+            height_padding = (int(diff_height / 2), int(np.ceil(diff_height / 2)))
+            width_padding = (int(np.floor(diff_width / 2)), int(np.ceil(diff_width / 2)))
+            shapes[i] = np.pad(image, [height_padding, width_padding], 'constant')
+        
+        # Online average them
+        self.shape = (shapes[0] * self._shape_iter + shapes[1]) / (self._shape_iter + 1)
+        self._shape_iter += 1
 
 
 class InternalModel():
     ### TODOs: 
-    #   1. Simple one that does not consider (dis-)appearing neurons
-    #   2. Add possibility to initialize with only segmentation (not necessarily labelled)
-    #   3. Take into account shift of local CoM with more/less neurons
-    #   4. Make self.model_image as a visualization for now
+    #   1. Add possibility to initialize with only segmentation (not necessarily labelled)
+    #   2. Take into account shift of local CoM with more/less neurons
+    #   3. update model should add new neurons to the model (?)
+    #   4. Make attributes as protected ?
     """Model of the axon structure of 2-photon images."""
     
     def __init__(self):
         """Create and initialize an internal model."""
-        # Container of axons object (keys are identity)
+        # Container of axons object
         self.axons = []
         # Image of the model's axons
         self.model_image = None
         # Coordinate of the center of mass
         self.center_of_mass = None
         # Iteration of update (useful for moving average)
-        self.update_iter = 0
+        self._update_iter = 0
     
     def initialize(self, id_frame, id_seg):
         """(Re-)Initialize the model with the given identity frame."""
         # Re-initialize the mdoel
         self.axons = []
         self.model_image = np.zeros(id_seg.shape, np.uint8)
-        self.update_iter = 1
+        self._update_iter = 1
         
-        regions = measure.regionprops(id_seg)
+        regions = measure.regionprops(id_seg, coordinates='rc')
         centroids = np.array([region.centroid for region in regions])
         areas = np.array([region.area for region in regions])[:,np.newaxis]
         self.center_of_mass = (centroids * areas).sum(0) / areas.sum()
@@ -72,15 +98,25 @@ class InternalModel():
             axon.tdTom = id_frame[roi, 0].mean()
             axon.gcamp = np.append(axon.gcamp, id_frame[roi, 1].mean())
             
+            # Find shape array around centroid
+            local_h, local_w = region.image.shape
+            r_s = max(region.local_centroid[0], local_h - region.local_centroid[0])
+            c_s = max(region.local_centroid[1], local_w - region.local_centroid[1])
+            axon.init_shape(np.pad(region.image, [(int(r_s - region.local_centroid[0] + 0.5), 
+                                                   int(r_s - (local_h - region.local_centroid[0]) + 0.5)),
+                                                  (int(c_s - region.local_centroid[1] + 0.5), 
+                                                   int(c_s - (local_w - region.local_centroid[1]) + 0.5))],
+                                   'constant'))
+            
             self.axons.append(axon)
         # Draw the model
         self._draw_model()
-            
+    
     def match_frame(self, frame, seg):
         """Match neurons of the given frame to the model's."""
         # Extract ROIs and compute local center of mass
         labels = measure.label(seg, connectivity=1)
-        regions = measure.regionprops(labels)
+        regions = measure.regionprops(labels, coordinates='rc')
         centroids = np.array([region.centroid for region in regions])
         areas = np.array([region.area for region in regions])[:, np.newaxis]
         local_CoM = (centroids * areas).sum(0) / areas.sum()
@@ -110,7 +146,7 @@ class InternalModel():
         for i in range(len(self.axons)):
             id_to_idx.update({self.axons[i].id: i})
         
-        regions = measure.regionprops(id_seg)
+        regions = measure.regionprops(id_seg, coordinates='rc')
         centroids = np.array([region.centroid for region in regions])
         areas = np.array([region.area for region in regions])[:, np.newaxis]
         local_CoM = (centroids * areas).sum(0) / areas.sum()
@@ -123,15 +159,27 @@ class InternalModel():
             self.axons[idx].position = self._update_mean(self.axons[idx].position, position)
             self.axons[idx].area = self._update_mean(self.axons[idx].area, region.area)
             self.axons[idx].tdTom = self._update_mean(self.axons[idx].tdTom, id_frame[roi, 0].mean())
-            self.axons[i].gcamp = np.append(self.axons[i].gcamp, id_frame[roi, 1].mean())
+            self.axons[idx].gcamp = np.append(self.axons[idx].gcamp, id_frame[roi, 1].mean())
+            
+            # Find shape array around centroid and update it
+            local_h, local_w = region.image.shape
+            r_s = max(region.local_centroid[0], local_h - region.local_centroid[0])
+            c_s = max(region.local_centroid[1], local_w - region.local_centroid[1])
+            new_shape = np.pad(region.image, [(int(r_s - region.local_centroid[0] + 0.5), 
+                                               int(r_s - (local_h - region.local_centroid[0]) + 0.5)),
+                                              (int(c_s - region.local_centroid[1] + 0.5), 
+                                               int(c_s - (local_w - region.local_centroid[1]) + 0.5))],
+                                'constant')
+            self.axons[idx].update_shape(new_shape)
         
-        self.update_iter += 1
+        self.center_of_mass = self._update_mean(self.center_of_mass, local_CoM)
+        self._update_iter += 1
         # Update the model image
         self._draw_model()
     
     def _update_mean(self, mean, new_value):
         """Update the online mean with the new value."""
-        new_mean = (mean * self.update_iter + new_value) / (self.update_iter + 1)
+        new_mean = (mean * self._update_iter + new_value) / (self._update_iter + 1)
         return new_mean
     
     def _draw_model(self):
@@ -139,10 +187,23 @@ class InternalModel():
         model_image = np.zeros_like(self.model_image)
         
         for axon in self.axons:
-            r, c = axon.position + self.center_of_mass
-            radius = np.sqrt(axon.area / (3 * np.pi))
+            # Create binary axon segmentation from axon shape and area
+            axon_seg = axon.shape >= np.sort(axon.shape, axis=None)[- int(axon.area + 0.5)]
             
-            rr, cc = draw.ellipse(r, c, 3 * radius, radius, shape=model_image.shape)
-            model_image[rr, cc] = axon.id
+            # Center of the axon on the image
+            center = (axon.position + self.center_of_mass).astype(np.uint16)
+            # Compute row and col coordinates to fit the axon in the image
+            min_row = max(0, axon_seg.shape[0] // 2 - center[0])
+            min_col = max(0, axon_seg.shape[1] // 2 - center[1])
+            max_row = min(axon_seg.shape[0] // 2, model_image.shape[0] - center[0]) + axon_seg.shape[0] // 2
+            max_col = min(axon_seg.shape[1] // 2, model_image.shape[1] - center[1]) + axon_seg.shape[1] // 2
+            axon_seg = axon_seg [min_row:max_row, min_col:max_col]
+            
+            # Compute the axon position in the image
+            min_row = max(0, center[0] - axon_seg.shape[0] // 2)
+            min_col = max(0, center[1] - axon_seg.shape[1] // 2)
+            max_row = min(model_image.shape[0], center[0] + axon_seg.shape[0] // 2)
+            max_col = min(model_image.shape[1], center[1] + axon_seg.shape[1] // 2)
+            model_image[min_row:max_row, min_col:max_col] = axon_seg * axon.id
             
         self.model_image = model_image
