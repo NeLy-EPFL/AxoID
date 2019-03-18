@@ -18,7 +18,6 @@ from scipy.optimize import linear_sum_assignment
 class Axon():
     ### TODOs:
     #   1. Make shape as protected attribute ?
-    #   2. Change .shape name ?
     """Axon object with an identity and properties linked to 2-photon imaging."""
     
     def __init__(self, identity):
@@ -59,7 +58,7 @@ class InternalModel():
     ### TODOs: 
     #   1. Add possibility to initialize with only segmentation (not necessarily labelled)
     #   2. Take into account shift of local CoM with more/less neurons
-    #   3. update model should add new neurons to the model (?)
+    #   3. Update model should add new neurons to the model (?)
     #   4. Make attributes as protected ?
     """Model of the axon structure of 2-photon images."""
     
@@ -134,7 +133,7 @@ class InternalModel():
         
         # Make identity image, and return it
         identities = np.zeros(seg.shape, np.uint8)
-        for region in regions:
+        for region in [regions[i] for i in rows_ids]:
             roi = labels == region.label
             identities[roi] = ids[region.label]
         return identities
