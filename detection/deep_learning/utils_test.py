@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 
 import torch, torchvision
 
-from .utils_data import make_images_valid
-from .utils_common.image import imread_to_float, overlay_preds_targets
+from utils_data import make_images_valid
+from utils_common.image import imread_to_float, overlay_preds_targets
 
 
 def predict(model, dataloader, discard_target=True):
