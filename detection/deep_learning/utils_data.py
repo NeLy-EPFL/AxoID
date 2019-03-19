@@ -367,16 +367,6 @@ def normalize_range(images):
     """Normalize the given float image(s) by changing the range from [0,1] to [-1,1]."""
     return images * 2.0 - 1.0
 
-def make_images_valid(images):
-    """Make sure the given images have correct value range and number of channels."""
-    # Set range from [min,max] to [0,1]
-    images = (images - images.min()) / (images.max() - images.min())
-    # If only 2 channel (e.g. "RG"), add a third one which is a copy of the second (so B = G)
-    if images.shape[1] == 2:
-        green = images[:,1,:,:].unsqueeze(1)
-        images = torch.cat([images, green], 1)
-    return images
-
 # Following transform is to avoid 2x2 maxpoolings on odd-sized images
 # (it makes sure down- and up-sizing are consistent throughout the network)
 def pad_transform(image, u_depth):

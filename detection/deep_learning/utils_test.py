@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 
 import torch, torchvision
 
-from utils_data import make_images_valid
 from utils_common.image import imread_to_float, overlay_preds_targets
 
 
@@ -101,6 +100,17 @@ def evaluate(model, dataloader, metrics):
     return values
 
 
+
+def _make_images_valid(images):
+    """Make sure the given images have correct value range and number of channels."""
+    # Set range from [min,max] to [0,1]
+    images = (images - images.min()) / (images.max() - images.min())
+    # If only 2 channel (e.g. "RG"), add a third one which is a copy of the second (so B = G)
+    if images.shape[1] == 2:
+        green = images[:,1,:,:].unsqueeze(1)
+        images = torch.cat([images, green], 1)
+    return images
+
 def show_sample(model, dataloader, n_samples=4, metrics=None):
     """
     Display a random sample of some inputs, predictions, and targets.
@@ -145,7 +155,7 @@ def show_sample(model, dataloader, n_samples=4, metrics=None):
     preds = torch.sigmoid(preds) > 0.5
         
     # Modify inputs to make sure it is a valid image
-    inputs = make_images_valid(inputs)
+    inputs = _make_images_valid(inputs)
     
     height, width = inputs.shape[-2:]
     outs = torchvision.utils.make_grid(inputs, pad_value=1.0)
