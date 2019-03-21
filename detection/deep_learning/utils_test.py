@@ -100,7 +100,6 @@ def evaluate(model, dataloader, metrics):
     return values
 
 
-
 def _make_images_valid(images):
     """Make sure the given images have correct value range and number of channels."""
     # Set range from [min,max] to [0,1]
