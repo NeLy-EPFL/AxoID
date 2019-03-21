@@ -8,7 +8,10 @@ Created on Thu Mar 14 15:03:31 2019
 @author: nicolas
 """
 ### TODOs:
-#   1. gcamp signal of axons with 0 or nan when absent ?
+#   1. How to deal with shifts in CoM (with dis-appearing neurons)
+#   2. Add possibility for the model to say that an axon is new, even if number is correct
+#   3. Deal with deformation that change position w.r.t. CoM
+#   4. Add possibility to add normalizing factors for Axon properties
 
 import warnings
 import numpy as np
@@ -37,8 +40,10 @@ class _Axon():
         self.id = identity
         # Row col position to center of mass
         self.position = None
-        # Area in pixel
+        # Area in pixel (mainly for drawing purposes)
         self.area = None
+        # Area normalized by the number of ROI pixel of the frame
+        self.area_norm = None
         # Average tdTomato intensity value
         self.tdTom = None
         # Time serie of GCaMP intensity values
@@ -48,7 +53,7 @@ class _Axon():
         # Iteration of update (useful for moving averages)
         self._update_iter = 0
     
-    def update_axon(self, id_frame, id_seg, region):
+    def update_axon(self, id_frame, id_seg, region, time_idx=None):
         """Update the axon's properties with the given identity frame."""
         # Print a warning if identity is different than region's label
         if self.id != region.label:
@@ -61,8 +66,10 @@ class _Axon():
         position = np.array(region.centroid) - local_CoM
         self.position = _update_mean(self._update_iter, self.position, position)
         self.area = _update_mean(self._update_iter, self.area, region.area)
+        self.area_norm = _update_mean(self._update_iter, self.area_norm, region.area / (id_seg != 0).sum())
         self.tdTom = _update_mean(self._update_iter, self.tdTom, id_frame[roi, 0].mean())
-        self.gcamp = np.append(self.gcamp, id_frame[roi, 1].mean())
+        if time_idx is not None:
+            self.update_gcamp(id_frame[roi, 1].mean(), time_idx)
         
         # Find shape array around centroid and update it
         local_h, local_w = region.image.shape
@@ -75,6 +82,14 @@ class _Axon():
                            'constant')
         self._update_shape(new_shape)
         self._update_iter += 1
+       
+    def update_gcamp(self, new_gcamp, time_idx):
+        """Update the gcamp time series with the new value at the given time."""
+        if time_idx < self.gcamp.size:
+            self.gcamp[time_idx] = new_gcamp
+        else: # new time index, need to increase gcamp array
+            self.gcamp = np.append(self.gcamp, [np.nan] * (time_idx + 1 - self.gcamp.size))
+            self.gcamp[time_idx] = new_gcamp
     
     def _update_shape(self, new_shape):
         """Update the axon shape with the new shape array."""
@@ -95,19 +110,20 @@ class _Axon():
     
     def __repr__(self):
         """Return the representation of the axon object (cannot be evaluated)."""
-        return "%s(id=%r, position=%r, area=%r, tdTom=%r, len(gcamp)=%r, shape.shape=%r)" % \
-            (self.__class__.__name__, self.id, self.position, self.area, self.tdTom,
-             len(self.gcamp), self.shape.shape)
+        return "%s(id=%r, position=%r, area=%r, area_norm=%r, tdTom=%r, len(gcamp)=%r, shape.shape=%r)" % \
+            (self.__class__.__name__, self.id, self.position, self.area, self.area_norm,
+             self.tdTom, len(self.gcamp), self.shape.shape)
     
     def __str__(self):
         """Return a formatted string of the axon object representation."""
-        return "Axon %d: position=%s, area=%d, tdTom=%.3f, len(gcamp)=%d, shape.shape=%s" % \
-            (self.id, self.position, self.area, self.tdTom, len(self.gcamp), self.shape.shape)
+        return "Axon %d: position=%s, area=%d, area_norm=%.3f, tdTom=%.3f, len(gcamp)=%d, shape.shape=%s" % \
+            (self.id, self.position, self.area, self.area_norm, self.tdTom, 
+             len(self.gcamp), self.shape.shape)
 
 
 class InternalModel():
     ### TODOs:
-    #   1. Take into account shift of local CoM with more/less neurons
+    #   1. 
     """Model of the axon structure of 2-photon images."""
     
     def __init__(self, add_new_axons=True):
@@ -116,6 +132,8 @@ class InternalModel():
         self.axons = []
         # Boolean deciding if new axons are labelled and added to the model or discarded
         self.add_new_axons = add_new_axons
+        # Normalization factors for axons properties
+        self.norm = None
         # Image of the model's axons
         self.image = None
         # Coordinate of the center of mass
@@ -123,9 +141,46 @@ class InternalModel():
         # Iteration of update (useful for moving averages)
         self._update_iter = 0
     
-    def initialize(self, id_frame, id_seg, add_new_axons=None):
+    def fit_normalization(self, rgb_stack, seg_stack):
+        """Compute center and deviation of ROI properties for normalization purpose."""
+        self.norm = dict()
+        positions = []
+        areas = []
+        tdToms = []
+        
+        # Loop on frames
+        for i in range(len(rgb_stack)):
+            labels = measure.label(seg_stack[i], connectivity=1)
+            regions = measure.regionprops(labels, coordinates='rc')
+            local_CoM = np.mean(np.nonzero(labels), 1)
+            
+            # Loop on ROI
+            for region in regions:
+                # Row col coordinates w.r.t. center of mass
+                positions.append(np.array(region.centroid) - local_CoM)
+                # Area normalized by number of ROI pixel in the frame
+                areas.append(region.area / seg_stack[i].sum())
+                # tdTom intensity
+                tdToms.append(rgb_stack[i, labels == region.label, 0].mean())
+                
+        self.norm["position"] = dict()
+        self.norm["position"]["mean"] = np.mean(positions, axis=0)
+        self.norm["position"]["std"] = np.std(positions, axis=0)
+        
+        self.norm["area"] = dict()
+        self.norm["area"]["mean"] = np.mean(areas)
+        self.norm["area"]["std"] = np.std(areas)
+        
+        self.norm["tdTom"] = dict()
+        self.norm["tdTom"]["mean"] = np.mean(tdToms)
+        # Set a minimum difference in tdTom to reduce stochasticity effects
+        self.norm["tdTom"]["std"] = max(0.1, np.std(tdToms))
+    
+    def initialize(self, id_frame, id_seg, add_new_axons=None, time_idx=None):
         """(Re-)Initialize the model with the given identity frame."""
-        # Re-initialize the mdoel
+        # Re-initialize the model, except for normalization
+        if self.norm is None:
+            raise RuntimeError("The model needs to be fitted a normalization before its initialization.")
         self.axons = []
         if add_new_axons is not None:
             self.add_new_axons = add_new_axons
@@ -142,24 +197,40 @@ class InternalModel():
         # Add an axon per ROI
         for region in regions:
             axon = _Axon(region.label)
-            axon.update_axon(id_frame, id_seg, region)
+            axon.update_axon(id_frame, id_seg, region, time_idx=time_idx)
             self.axons.append(axon)
             
         # Draw the model
         self._draw_model()
     
-    def match_frame(self, frame, seg):
+    def match_frame(self, frame, seg, time_idx=None):
         """Match axons of the given frame to the model's (new axons are assigned new labels)."""
         # Extract ROIs and compute local center of mass
         labels = measure.label(seg, connectivity=1)
         regions = measure.regionprops(labels, coordinates='rc')
         centroids = np.array([region.centroid for region in regions])
+        areas = np.array([region.area / seg.sum() for region in regions])
+        tdToms = np.array([frame[labels == region.label, 0].mean() for region in regions])
         local_CoM = np.mean(np.nonzero(seg), 1)
         
         # Build a cost matrix where rows are new ROIs and cols are model's axons
-        # Currently, cost = distance
+        # Currently, cost = distance in hyperspace(position, area_norm, tdTom)
+        # Position (row and col)
         x_roi = centroids - local_CoM
+        x_roi = (x_roi - self.norm["position"]["mean"]) / self.norm["position"]["std"]
         x_model = np.stack([axon.position for axon in self.axons], axis=0)
+        x_model = (x_model - self.norm["position"]["mean"]) / self.norm["position"]["std"]
+        # Area (normed)
+        x_roi = np.concatenate((x_roi, areas[:, np.newaxis]), axis=1)
+        x_roi[:,-1] = (x_roi[:,-1] - self.norm["area"]["mean"]) / self.norm["area"]["std"]
+        x_model = np.concatenate((x_model, np.stack([axon.area_norm for axon in self.axons])[:, np.newaxis]), axis=1)
+        x_model[:,-1] = (x_model[:,-1] - self.norm["area"]["mean"]) / self.norm["area"]["std"]
+        # tdTom
+        x_roi = np.concatenate((x_roi, tdToms[:, np.newaxis]), axis=1)
+        x_roi[:,-1] = (x_roi[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"]
+        x_model = np.concatenate((x_model, np.stack([axon.tdTom for axon in self.axons])[:, np.newaxis]), axis=1)
+        x_model[:,-1] = (x_model[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"]
+        
         cost_matrix = cdist(x_roi, x_model)
         
         # Assign identities through the hungarian method
@@ -186,7 +257,7 @@ class InternalModel():
             identities[roi] = ids[region.label]
         return identities
     
-    def update_model(self, id_frame, id_seg):
+    def update_model(self, id_frame, id_seg, time_idx=None):
         """Update the model based on the identity frame (new labels are added as new axons)."""
         # Axons' identity to index mapping
         id_to_idx = dict()
@@ -200,12 +271,19 @@ class InternalModel():
             if region.label not in [axon.id for axon in self.axons]:
                 if self.add_new_axons:
                     axon = _Axon(region.label)
-                    axon.update_axon(id_frame, id_seg, region)
+                    axon.update_axon(id_frame, id_seg, region, time_idx=time_idx)
                     self.axons.append(axon)
             # Else, update it
             else:
                 idx = id_to_idx[region.label]
-                self.axons[idx].update_axon(id_frame, id_seg, region)
+                self.axons[idx].update_axon(id_frame, id_seg, region, time_idx=time_idx)
+        
+        # If time index is given, unset the GCaMP signal of absent neurons
+        if time_idx is not None:
+            frame_ids = [region.label for region in regions]
+            for axon in self.axons:
+                if axon.id not in frame_ids:
+                    axon.update_gcamp(np.nan, time_idx)
         
         local_CoM = np.mean(np.nonzero(id_seg), 1)
         self.center_of_mass = _update_mean(self._update_iter, self.center_of_mass, local_CoM)
