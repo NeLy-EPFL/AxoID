@@ -11,7 +11,6 @@ Created on Thu Mar 14 15:03:31 2019
 #   1. How to deal with shifts in CoM (with dis-appearing neurons)
 #   2. Add possibility for the model to say that an axon is new, even if number is correct
 #   3. Deal with deformation that change position w.r.t. CoM
-#   4. Add possibility to add normalizing factors for Axon properties
 
 import warnings
 import numpy as np
@@ -123,7 +122,7 @@ class _Axon():
 
 class InternalModel():
     ### TODOs:
-    #   1. 
+    #   1. Add possible annotation in hungarian with threshold for "new" neurons
     """Model of the axon structure of 2-photon images."""
     
     def __init__(self, add_new_axons=True):
@@ -203,7 +202,7 @@ class InternalModel():
         # Draw the model
         self._draw_model()
     
-    def match_frame(self, frame, seg, time_idx=None):
+    def match_frame(self, frame, seg, time_idx=None, debug=False):
         """Match axons of the given frame to the model's (new axons are assigned new labels)."""
         # Extract ROIs and compute local center of mass
         labels = measure.label(seg, connectivity=1)
@@ -232,6 +231,8 @@ class InternalModel():
         x_model[:,-1] = (x_model[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"]
         
         cost_matrix = cdist(x_roi, x_model)
+        if debug:
+            print(cost_matrix)
         
         # Assign identities through the hungarian method
         rows_ids, col_ids = linear_sum_assignment(cost_matrix)
