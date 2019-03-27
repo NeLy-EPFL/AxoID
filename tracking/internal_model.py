@@ -9,8 +9,9 @@ Created on Thu Mar 14 15:03:31 2019
 """
 ### TODOs:
 #   1. How to deal with shifts in CoM (with dis-appearing neurons)
-#   2. Add possibility for the model to say that an axon is new, even if number is correct
-#   3. Deal with deformation that change position w.r.t. CoM
+#   2. Deal with deformation that change position w.r.t. CoM
+#   3. Check how to deal with thresholds and nans in gcamp
+#   4. Decrease importance of first passes compared to last (manually setting update iter?)
 
 import warnings
 import numpy as np
@@ -28,9 +29,28 @@ def _update_mean(update_iter, mean, new_value):
     return new_mean
 
 
+class _GCaMP(list):
+    """List for GCaMP intensities which returns np.nan when out of bounds."""
+    
+    def __getitem__(self, idx):
+        """If index is out of bound, return np.nan."""
+        if idx < len(self):
+            return super().__getitem__(idx)
+        else:
+            return np.nan
+    
+    def __setitem__(self, idx, value):
+        """If index is out of bound, fills the list with np.nan to fit the index, then set the new item."""
+        if idx < len(self):
+           super().__setitem__(idx, value)
+        else: # new index, need to increase gcamp list
+            self.extend([np.nan] * (idx + 1 - len(self)))
+            super().__setitem__(idx, value)
+
+
 class _Axon():
     ### TODOs:
-    #   1.
+    #   1. 
     """Axon object with an identity and properties linked to 2-photon imaging."""
     
     def __init__(self, identity):
@@ -46,7 +66,7 @@ class _Axon():
         # Average tdTomato intensity value
         self.tdTom = None
         # Time serie of GCaMP intensity values
-        self.gcamp = np.array([])
+        self.gcamp = _GCaMP()
         # Average of shapes
         self.shape = np.array([[]])
         # Iteration of update (useful for moving averages)
@@ -68,7 +88,7 @@ class _Axon():
         self.area_norm = _update_mean(self._update_iter, self.area_norm, region.area / (id_seg != 0).sum())
         self.tdTom = _update_mean(self._update_iter, self.tdTom, id_frame[roi, 0].mean())
         if time_idx is not None:
-            self.update_gcamp(id_frame[roi, 1].mean(), time_idx)
+            self.gcamp[time_idx] = id_frame[roi, 1].mean()
         
         # Find shape array around centroid and update it
         local_h, local_w = region.image.shape
@@ -81,14 +101,6 @@ class _Axon():
                            'constant')
         self._update_shape(new_shape)
         self._update_iter += 1
-       
-    def update_gcamp(self, new_gcamp, time_idx):
-        """Update the gcamp time series with the new value at the given time."""
-        if time_idx < self.gcamp.size:
-            self.gcamp[time_idx] = new_gcamp
-        else: # new time index, need to increase gcamp array
-            self.gcamp = np.append(self.gcamp, [np.nan] * (time_idx + 1 - self.gcamp.size))
-            self.gcamp[time_idx] = new_gcamp
     
     def _update_shape(self, new_shape):
         """Update the axon shape with the new shape array."""
@@ -122,7 +134,7 @@ class _Axon():
 
 class InternalModel():
     ### TODOs:
-    #   1. Add possible annotation in hungarian with threshold for "new" neurons
+    #   1. Drawing of model, add neurons ? What about overlap ?
     """Model of the axon structure of 2-photon images."""
     
     def __init__(self, add_new_axons=True):
@@ -139,15 +151,25 @@ class InternalModel():
         self.center_of_mass = None
         # Iteration of update (useful for moving averages)
         self._update_iter = 0
+        # Weights for the data normalization and thresholding in Hungarian assignment
+        self._W_POSITION = 1.0
+        self._W_AREA = 0.5
+        self._W_TDTOM = 1.0
+        self._W_GCAMP = 1.0
+        # Threshold for Hungarian assignment (weighted by previous weights)
+        self._TH_HUNGARIAN = 1.0
     
     def fit_normalization(self, rgb_stack, seg_stack):
-        """Compute center and deviation of ROI properties for normalization purpose."""
+        """Compute center and deviation of ROI properties for normalization purposes."""
         self.norm = dict()
         positions = []
         areas = []
         tdToms = []
+        gcamps = []
         
         # Loop on frames
+        prev_labels = None
+        prev_regions = None
         for i in range(len(rgb_stack)):
             labels = measure.label(seg_stack[i], connectivity=1)
             regions = measure.regionprops(labels, coordinates='rc')
@@ -161,19 +183,34 @@ class InternalModel():
                 areas.append(region.area / seg_stack[i].sum())
                 # tdTom intensity
                 tdToms.append(rgb_stack[i, labels == region.label, 0].mean())
-                
+                # GCaMP decrease (cannot be negative)
+                if i > 0:
+                    for prev_region in prev_regions:
+                        gcamps.append(max(0,
+                                          - (rgb_stack[i, labels == region.label, 0].mean() - \
+                                             rgb_stack[i-1, prev_labels == prev_region.label, 0].mean())))
+            prev_labels = labels.copy()
+            prev_regions = regions.copy()
+        
         self.norm["position"] = dict()
         self.norm["position"]["mean"] = np.mean(positions, axis=0)
-        self.norm["position"]["std"] = np.std(positions, axis=0)
+        self.norm["position"]["std"] = np.std(positions, axis=0) / self._W_POSITION
         
         self.norm["area"] = dict()
         self.norm["area"]["mean"] = np.mean(areas)
-        self.norm["area"]["std"] = np.std(areas)
+        # Increase the std to effectively reduce its importance (<=> weighting)
+        self.norm["area"]["std"] = np.std(areas) / self._W_AREA
         
         self.norm["tdTom"] = dict()
         self.norm["tdTom"]["mean"] = np.mean(tdToms)
         # Set a minimum difference in tdTom to reduce stochasticity effects
-        self.norm["tdTom"]["std"] = max(0.1, np.std(tdToms))
+        self.norm["tdTom"]["std"] = max(0.1, np.std(tdToms)) / self._W_TDTOM
+        
+        self.norm["gcamp"] = dict()
+        # Already positive, no centering as it will directly serves as distance
+        self.norm["gcamp"]["mean"] = None
+        # Set a minimum difference in GCaMP to reduce stochasticity effects
+        self.norm["gcamp"]["std"] = max(0.1, np.std(gcamps)) / self._W_GCAMP
     
     def initialize(self, id_frame, id_seg, add_new_axons=None, time_idx=None):
         """(Re-)Initialize the model with the given identity frame."""
@@ -204,6 +241,10 @@ class InternalModel():
     
     def match_frame(self, frame, seg, time_idx=None, debug=False):
         """Match axons of the given frame to the model's (new axons are assigned new labels)."""
+        # If no ROI, do nothing
+        if seg.sum() == 0:
+            return np.zeros(seg.shape, np.uint8)
+        
         # Extract ROIs and compute local center of mass
         labels = measure.label(seg, connectivity=1)
         regions = measure.regionprops(labels, coordinates='rc')
@@ -213,7 +254,7 @@ class InternalModel():
         local_CoM = np.mean(np.nonzero(seg), 1)
         
         # Build a cost matrix where rows are new ROIs and cols are model's axons
-        # Currently, cost = distance in hyperspace(position, area_norm, tdTom)
+        # Currently, cost = distance in hyperspace(position, area_norm, tdTom) + (optional) decrease in GCaMP
         # Position (row and col)
         x_roi = centroids - local_CoM
         x_roi = (x_roi - self.norm["position"]["mean"]) / self.norm["position"]["std"]
@@ -229,27 +270,53 @@ class InternalModel():
         x_roi[:,-1] = (x_roi[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"]
         x_model = np.concatenate((x_model, np.stack([axon.tdTom for axon in self.axons])[:, np.newaxis]), axis=1)
         x_model[:,-1] = (x_model[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"]
+        # If time index given, add GCaMP to the cost by computing decrease from each Axon to ROI
+        if time_idx is not None and time_idx != 0:
+            gcamp_diff = np.zeros((len(regions), len(self.axons)))
+            for i, region in enumerate(regions):
+                gcamp_diff[i] = - (frame[labels == region.label, 1].mean() - \
+                                   np.array([axon.gcamp[time_idx - 1] for axon in self.axons]))
+            # Only consider decreases, and set NaN to 0
+            gcamp_diff = np.nan_to_num(gcamp_diff)
+            gcamp_diff *= gcamp_diff > 0
+            # Normalize
+            gcamp_diff = gcamp_diff / self.norm["gcamp"]["std"]
         
+        # Build the cost matrix and set the threshold for new neurons
         cost_matrix = cdist(x_roi, x_model)
-        if debug:
-            print(cost_matrix)
+        if time_idx is not None and time_idx != 0:
+            cost_matrix = np.sqrt(cost_matrix ** 2 + gcamp_diff ** 2)
+            thresh_hungarian = self._TH_HUNGARIAN * \
+                np.sqrt(2 * self._W_POSITION ** 2 + self._W_AREA ** 2 + \
+                        self._W_TDTOM ** 2 + self._W_GCAMP ** 2)
+        else:
+            thresh_hungarian = self._TH_HUNGARIAN * \
+                np.sqrt(2 * self._W_POSITION ** 2 + self._W_AREA ** 2 + \
+                        self._W_TDTOM ** 2)
+        if debug: #TODO: remove after use
+            print(cost_matrix, thresh_hungarian)
+        # Add "dummy" axons in the cost matrix for axons not in the model
+        cost_matrix = np.concatenate([cost_matrix, 
+              np.ones((len(x_roi), len(x_roi))) * thresh_hungarian], axis=1)
         
         # Assign identities through the hungarian method
         rows_ids, col_ids = linear_sum_assignment(cost_matrix)
-        ids = dict(zip([regions[i].label for i in rows_ids],
-                       [self.axons[i].id for i in col_ids]))
-        # Unassigned (new) axons are given new labels or are discarded as background
-        for i in range(len(regions)):
-            if i in rows_ids:
-                continue
-            if self.add_new_axons:
+        if debug: #TODO: remove after use
+            print(rows_ids, col_ids)
+        ids = dict()
+        for i, region in enumerate(regions):
+            c_idx = col_ids[np.where(rows_ids == i)[0]]
+            if i in rows_ids and c_idx < len(x_model):
+                ids.update({region.label: self.axons[int(c_idx)].id})
+            # Unassigned/new axons are given new labels or are discarded as background
+            elif self.add_new_axons:
                 # Create new axon id
                 new_id = 1
                 while new_id in [axon.id for axon in self.axons]:
                     new_id += 1
-                ids.update({regions[i].label: new_id})
+                ids.update({region.label: new_id})
             else:
-                ids.update({regions[i].label: 0})
+                ids.update({region.label: 0})
         
         # Make identity image, and return it
         identities = np.zeros(seg.shape, np.uint8)
@@ -284,7 +351,11 @@ class InternalModel():
             frame_ids = [region.label for region in regions]
             for axon in self.axons:
                 if axon.id not in frame_ids:
-                    axon.update_gcamp(np.nan, time_idx)
+                    axon.gcamp[time_idx]= np.nan
+        
+        # If no ROI, don't update center of mass nor redraw the model
+        if id_seg.sum() == 0:
+            return
         
         local_CoM = np.mean(np.nonzero(id_seg), 1)
         self.center_of_mass = _update_mean(self._update_iter, self.center_of_mass, local_CoM)
