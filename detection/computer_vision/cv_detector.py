@@ -17,7 +17,7 @@ from utils_common.register_cc import register_stack, shift_image
 from utils_common.processing import nlm_denoising
 
 
-def cv_detect(rgb_stack, h_red=11, h_green=11,
+def cv_detect(rgb_stack, h_red=11, h_green=11, sigma_gauss=2,
               thresholding_fn=filters.threshold_otsu, 
               registration=False, selem=disk(1)):
     """Use computer vision to detect ROI in given RGB stack."""
@@ -33,7 +33,7 @@ def cv_detect(rgb_stack, h_red=11, h_green=11,
     output = np.zeros(stack.shape[:-1], dtype=np.bool)
     for i in range(len(rgb_stack)):
         # Segmentation
-        denoised_pp = filters.gaussian(denoised[i], sigma=2)
+        denoised_pp = filters.gaussian(denoised[i], sigma=sigma_gauss)
         seg = denoised_pp > thresholding_fn(denoised_pp)
         seg = morph.erosion(seg, selem=selem)
         
