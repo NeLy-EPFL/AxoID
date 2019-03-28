@@ -10,8 +10,6 @@ Created on Thu Mar 14 15:03:31 2019
 ### TODOs:
 #   1. How to deal with shifts in CoM (with dis-appearing neurons)
 #   2. Deal with deformation that change position w.r.t. CoM
-#   3. Check how to deal with thresholds and nans in gcamp
-#   4. Decrease importance of first passes compared to last (manually setting update iter?)
 
 import warnings
 import numpy as np
@@ -134,10 +132,10 @@ class _Axon():
 
 class InternalModel():
     ### TODOs:
-    #   1. Drawing of model, add neurons ? What about overlap ?
+    #   1. 
     """Model of the axon structure of 2-photon images."""
     
-    def __init__(self, add_new_axons=True):
+    def __init__(self, add_new_axons=False):
         """Create and initialize an internal model."""
         # Container of axons object
         self.axons = []
@@ -377,16 +375,16 @@ class InternalModel():
             # Center of the axon on the image
             center = (axon.position + self.center_of_mass).astype(np.uint16)
             # Compute row and col coordinates to fit the axon in the image
-            a_min_row = max(0, axon_seg.shape[0] // 2 - center[0])
-            a_min_col = max(0, axon_seg.shape[1] // 2 - center[1])
-            a_max_row = min(axon_seg.shape[0], axon_seg.shape[0] // 2 + model_image.shape[0] - center[0])
-            a_max_col = min(axon_seg.shape[1], axon_seg.shape[1] // 2 + model_image.shape[1] - center[1])
+            a_min_row = (axon_seg.shape[0] // 2 - center[0]).clip(0, axon_seg.shape[0])
+            a_min_col = (axon_seg.shape[1] // 2 - center[1]).clip(0, axon_seg.shape[1])
+            a_max_row = (axon_seg.shape[0] // 2 + model_image.shape[0] - center[0]).clip(0, axon_seg.shape[0])
+            a_max_col = (axon_seg.shape[1] // 2 + model_image.shape[1] - center[1]).clip(0, axon_seg.shape[1])
             
             # Compute the axon position in the image
-            min_row = max(0, center[0] - axon_seg.shape[0] // 2)
-            min_col = max(0, center[1] - axon_seg.shape[1] // 2)
-            max_row = min(model_image.shape[0], center[0] + axon_seg.shape[0] // 2 + 1)
-            max_col = min(model_image.shape[1], center[1] + axon_seg.shape[1] // 2 + 1)
+            min_row = (center[0] - axon_seg.shape[0] // 2).clip(0, model_image.shape[0])
+            min_col = (center[1] - axon_seg.shape[1] // 2).clip(0, model_image.shape[1])
+            max_row = (center[0] + axon_seg.shape[0] // 2 + 1).clip(0, model_image.shape[0])
+            max_col = (center[1] + axon_seg.shape[1] // 2 + 1).clip(0, model_image.shape[1])
             model_image[min_row:max_row, min_col:max_col] += \
                 (axon_seg[a_min_row:a_max_row, a_min_col:a_max_col] * axon.id).astype(model_image.dtype)
                 
