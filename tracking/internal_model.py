@@ -8,11 +8,12 @@ Created on Thu Mar 14 15:03:31 2019
 @author: nicolas
 """
 ### TODOs:
-#   1. How to deal with shifts in CoM (with dis-appearing neurons)
-#   2. Deal with deformation that change position w.r.t. CoM
+#   1. Deal with deformation that change position w.r.t. CoM
 
 import warnings
 import numpy as np
+#TODO: remove after testing
+import matplotlib.pyplot as plt
 from skimage import measure
 from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
@@ -92,10 +93,11 @@ class _Axon():
         local_h, local_w = region.image.shape
         r_s = max(region.local_centroid[0], local_h - region.local_centroid[0])
         c_s = max(region.local_centroid[1], local_w - region.local_centroid[1])
-        new_shape = np.pad(region.image, [(int(r_s - region.local_centroid[0] + 0.5), 
-                                           int(r_s - (local_h - region.local_centroid[0]) + 0.5)),
-                                          (int(c_s - region.local_centroid[1] + 0.5), 
-                                           int(c_s - (local_w - region.local_centroid[1]) + 0.5))],
+        new_shape = np.pad(region.image, 
+                           [(int(r_s - region.local_centroid[0] + 0.5), 
+                             int(r_s - (local_h - region.local_centroid[0]) + 0.5)),
+                            (int(c_s - region.local_centroid[1] + 0.5), 
+                             int(c_s - (local_w - region.local_centroid[1]) + 0.5))],
                            'constant')
         self._update_shape(new_shape)
         self._update_iter += 1
@@ -132,7 +134,7 @@ class _Axon():
 
 class InternalModel():
     ### TODOs:
-    #   1. 
+    #   1. Remove `debug` in match_frame() after testing
     """Model of the axon structure of 2-photon images."""
     
     def __init__(self, add_new_axons=False):
@@ -237,11 +239,13 @@ class InternalModel():
         # Draw the model
         self._draw_model()
     
-    def match_frame(self, frame, seg, time_idx=None, debug=False):
+    def match_frame(self, frame, seg, time_idx=None, max_iter=5, debug=False):
         """Match axons of the given frame to the model's (new axons are assigned new labels)."""
         # If no ROI, do nothing
         if seg.sum() == 0:
             return np.zeros(seg.shape, np.uint8)
+        # Minimum one iteration of assignment
+        max_iter = max(1, max_iter)
         
         # Extract ROIs and compute local center of mass
         labels = measure.label(seg, connectivity=1)
@@ -269,6 +273,7 @@ class InternalModel():
         x_model = np.concatenate((x_model, np.stack([axon.tdTom for axon in self.axons])[:, np.newaxis]), axis=1)
         x_model[:,-1] = (x_model[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"]
         # If time index given, add GCaMP to the cost by computing decrease from each Axon to ROI
+        # Also compute the threshold for "dummy" neurons
         if time_idx is not None and time_idx != 0:
             gcamp_diff = np.zeros((len(regions), len(self.axons)))
             for i, region in enumerate(regions):
@@ -279,11 +284,7 @@ class InternalModel():
             gcamp_diff *= gcamp_diff > 0
             # Normalize
             gcamp_diff = gcamp_diff / self.norm["gcamp"]["std"]
-        
-        # Build the cost matrix and set the threshold for new neurons
-        cost_matrix = cdist(x_roi, x_model)
-        if time_idx is not None and time_idx != 0:
-            cost_matrix = np.sqrt(cost_matrix ** 2 + gcamp_diff ** 2)
+            
             thresh_hungarian = self._TH_HUNGARIAN * \
                 np.sqrt(2 * self._W_POSITION ** 2 + self._W_AREA ** 2 + \
                         self._W_TDTOM ** 2 + self._W_GCAMP ** 2)
@@ -291,30 +292,100 @@ class InternalModel():
             thresh_hungarian = self._TH_HUNGARIAN * \
                 np.sqrt(2 * self._W_POSITION ** 2 + self._W_AREA ** 2 + \
                         self._W_TDTOM ** 2)
-        if debug: #TODO: remove after use
-            print(cost_matrix, thresh_hungarian)
-        # Add "dummy" axons in the cost matrix for axons not in the model
-        cost_matrix = np.concatenate([cost_matrix, 
-              np.ones((len(x_roi), len(x_roi))) * thresh_hungarian], axis=1)
         
-        # Assign identities through the hungarian method
-        rows_ids, col_ids = linear_sum_assignment(cost_matrix)
-        if debug: #TODO: remove after use
+        prev_ids = None
+        for n in range(max_iter):
+            # Build the cost matrix with gcamp differences if applicable
+            cost_matrix = cdist(x_roi, x_model)
+            if time_idx is not None and time_idx != 0:
+                cost_matrix = np.sqrt(cost_matrix ** 2 + gcamp_diff ** 2)
+            # Add "dummy" axons in the cost matrix for axons not in the model
+            cost_matrix = np.concatenate([cost_matrix, 
+                  np.ones((len(x_roi), len(x_roi))) * thresh_hungarian], axis=1)
+            
+            # Assign identities through the hungarian method
+            rows_ids, col_ids = linear_sum_assignment(cost_matrix)
+            
+            ids = dict()
+            for i, region in enumerate(regions):
+                c_idx = col_ids[np.where(rows_ids == i)[0]]
+                if i in rows_ids and c_idx < len(x_model):
+                    ids.update({region.label: self.axons[int(c_idx)].id})
+                else:
+                    ids.update({region.label: 0})
+            
+            if debug and n == 0:
+                identities = np.zeros(seg.shape, np.uint8)
+                for region in regions:
+                    roi = labels == region.label
+                    identities[roi] = ids[region.label]
+                plt.figure(figsize=(8,4))
+                plt.suptitle("First assignment")
+                plt.subplot(121); plt.title("model")
+                plt.imshow(self.image)
+                plt.plot(self.center_of_mass[1], self.center_of_mass[0], 'rx')
+                plt.subplot(122); plt.title("identity")
+                plt.imshow(identities, vmax=self.image.max())
+                plt.plot(local_CoM[1], local_CoM[0], 'rx')
+            
+            # Stop if converged, max_iter is reached, or no ROI is assigned
+            if ids == prev_ids or n == (max_iter - 1) or [i for i in col_ids if i < len(self.axons)] == []:
+                break
+            prev_ids = ids
+            
+            # Compute new center of masses based on assigned neurons, weighted by
+            # the inverse of the cost of their assignment (with an epsilon to avoid division by 0)
+            epsilon = 1e-6
+            model_weighted_areas = np.array([
+                    self.axons[i].area / (cost_matrix[rows_ids[np.where(col_ids == i)[0]], i] + epsilon)
+                    for i in col_ids if i < len(self.axons)])
+            model_positions = np.array([self.axons[i].position for i in col_ids if i < len(self.axons)]) + \
+                self.center_of_mass
+            new_model_CoM = (model_positions * model_weighted_areas).sum(0) / model_weighted_areas.sum()
+            frame_weighted_areas = np.array([
+                    regions[i].area / (cost_matrix[i, col_ids[np.where(rows_ids == i)[0]]] + epsilon)
+                    for i in rows_ids if ids[regions[i].label] != 0])
+            frame_centroids = np.array([regions[i].centroid for i in rows_ids if ids[regions[i].label] != 0])
+            new_frame_CoM = (frame_centroids * frame_weighted_areas).sum(0) / frame_weighted_areas.sum()
+            
+            # Recompute positions relative to new center of mass
+            x_roi[:,:2] = centroids - new_frame_CoM
+            x_roi[:,:2] = (x_roi[:,:2] - self.norm["position"]["mean"]) / self.norm["position"]["std"]
+            x_model[:,:2] = np.stack([axon.position for axon in self.axons], axis=0) - \
+                            (new_model_CoM - self.center_of_mass)
+            x_model[:,:2] = (x_model[:,:2] - self.norm["position"]["mean"]) / self.norm["position"]["std"]
+            
+            if debug:
+                identities = np.zeros(seg.shape, np.uint8)
+                for region in regions:
+                    roi = labels == region.label
+                    identities[roi] = ids[region.label]
+                plt.figure(figsize=(8,4))
+                plt.suptitle("n = %d" % n)
+                plt.subplot(121); plt.title("model")
+                plt.imshow(self.image)
+                plt.plot(new_model_CoM[1], new_model_CoM[0], 'rx')
+                plt.subplot(122); plt.title("identity")
+                plt.imshow(identities, vmax=self.image.max())
+                plt.plot(new_frame_CoM[1], new_frame_CoM[0], 'rx')
+                plt.show()
+        
+        if debug:
+            print(cost_matrix[:,:len(self.axons)], thresh_hungarian)
             print(rows_ids, col_ids)
-        ids = dict()
-        for i, region in enumerate(regions):
-            c_idx = col_ids[np.where(rows_ids == i)[0]]
-            if i in rows_ids and c_idx < len(x_model):
-                ids.update({region.label: self.axons[int(c_idx)].id})
-            # Unassigned/new axons are given new labels or are discarded as background
-            elif self.add_new_axons:
+            print(self.center_of_mass, new_model_CoM)
+            print(local_CoM, new_frame_CoM)
+        
+        # Unassigned/new axons are given new labels if applicable
+        if self.add_new_axons:
+            for label, id in ids.items():
+                if id != 0:
+                    continue
                 # Create new axon id
                 new_id = 1
-                while new_id in [axon.id for axon in self.axons]:
+                while new_id in [axon.id for axon in self.axons] or new_id in ids.values():
                     new_id += 1
-                ids.update({region.label: new_id})
-            else:
-                ids.update({region.label: 0})
+                ids[label] = new_id
         
         # Make identity image, and return it
         identities = np.zeros(seg.shape, np.uint8)
