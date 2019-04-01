@@ -129,14 +129,12 @@ def show_sample(model, dataloader, n_samples=4, metrics=None):
     """
     indices = np.random.randint(0, len(dataloader.dataset), n_samples)
     items = [dataloader.dataset[i] for i in indices]
+    items = dataloader.collate_fn(items)
     
-    inputs = torch.stack([torch.from_numpy(item[0]) for item in items])
-    targets = torch.stack([torch.from_numpy(item[1]) for item in items])
-    inputs = inputs.to(model.device)
-    targets = targets.to(model.device)
-    if len(items[0]) == 3: # loss weights
-        weights = torch.stack([torch.from_numpy(item[2]) for item in items])
-        weights = weights.to(model.device)
+    inputs = items[0].to(model.device)
+    targets = items[1].to(model.device)
+    if len(items) == 3: # loss weights
+        weights = items[2].to(model.device)
     
     with torch.no_grad():
         model.eval()
@@ -160,10 +158,10 @@ def show_sample(model, dataloader, n_samples=4, metrics=None):
     outs = torchvision.utils.make_grid(inputs, pad_value=1.0)
     outs_p = torchvision.utils.make_grid(preds.view([-1, 1, height, width]), pad_value=1.0)
     outs_t = torchvision.utils.make_grid(targets.view([-1, 1, height, width]), pad_value=0)
-    if len(items[0]) == 3:
+    if len(items) == 3:
         outs_w = torchvision.utils.make_grid(weights.view([-1, 1, height, width]), pad_value=1.0)
     
-    if len(items[0]) == 3:
+    if len(items) == 3:
         plt.figure(figsize=(13,10))
         plt.subplot(311); plt.title("Inputs")
         plt.imshow(outs.cpu().numpy().transpose([1,2,0]), vmin=0, vmax=1)
