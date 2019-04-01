@@ -18,18 +18,7 @@ from skimage import io
 
 from utils_common.image import imread_to_float, to_npint
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate weights for pixel-wise"
-                                     "loss weighting.")
-    parser.add_argument(
-            '--data_dir',
-            type=str, 
-            help="directory to the experiments folder. If not set, will use the"
-            "one in the code."
-    )
-    args = parser.parse_args()
-    
+def main(args):
     if args.data_dir is None:
         data_dir = "/data/talabot/pdm/dataset/"
         sets = ["train", "validation", "test", "synthetic_2-6_181205"]
@@ -64,3 +53,17 @@ if __name__ == "__main__":
                 for j in range(len(weights)):
                     io.imsave(os.path.join(data_dir, set, exp, "wgt_frames", "wgt_%04d.png" % j), 
                               to_npint(weights[j]))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate weights for pixel-wise"
+                                     "loss weighting.")
+    parser.add_argument(
+            '--data_dir',
+            type=str, 
+            help="directory to the experiments folder. If not set, will use the"
+            "one in the code."
+    )
+    args = parser.parse_args()
+    
+    main(args)
