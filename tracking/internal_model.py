@@ -239,12 +239,12 @@ class InternalModel():
         # Draw the model
         self._draw_model()
     
-    def match_frame(self, frame, seg, time_idx=None, max_iter=5, debug=False):
+    def match_frame(self, frame, seg, time_idx=None, max_iter=5, debug=False, return_debug=False):
         """Match axons of the given frame to the model's (new axons are assigned new labels)."""
         # If no ROI, do nothing
         if seg.sum() == 0:
             return np.zeros(seg.shape, np.uint8)
-        # Minimum one iteration of assignment
+        # One iteration of assignment minimum
         max_iter = max(1, max_iter)
         
         # Extract ROIs and compute local center of mass
@@ -293,7 +293,6 @@ class InternalModel():
                 np.sqrt(2 * self._W_POSITION ** 2 + self._W_AREA ** 2 + \
                         self._W_TDTOM ** 2)
         
-        prev_ids = None
         for n in range(max_iter):
             # Build the cost matrix with gcamp differences if applicable
             cost_matrix = cdist(x_roi, x_model)
@@ -328,10 +327,9 @@ class InternalModel():
                 plt.imshow(identities, vmax=self.image.max())
                 plt.plot(local_CoM[1], local_CoM[0], 'rx')
             
-            # Stop if converged, max_iter is reached, or no ROI is assigned
-            if ids == prev_ids or n == (max_iter - 1) or [i for i in col_ids if i < len(self.axons)] == []:
+            # Stop if max_iter is reached or no ROI is assigned
+            if n == (max_iter - 1) or [i for i in col_ids if i < len(self.axons)] == []:
                 break
-            prev_ids = ids
             
             # Compute new center of masses based on assigned neurons, weighted by
             # the inverse of the cost of their assignment (with an epsilon to avoid division by 0)
@@ -375,6 +373,8 @@ class InternalModel():
             print(rows_ids, col_ids)
             print(self.center_of_mass, new_model_CoM)
             print(local_CoM, new_frame_CoM)
+        if return_debug:
+            return cost_matrix, rows_ids, col_ids
         
         # Unassigned/new axons are given new labels if applicable
         if self.add_new_axons:
