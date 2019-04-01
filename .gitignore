@@ -15,4 +15,4 @@ detection/deep_learning/models
 *.pth
 
 # Results
-
+detection/deep_learning/outputs
