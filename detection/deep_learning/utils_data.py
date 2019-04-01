@@ -10,7 +10,6 @@ Created on Mon Oct 22 13:54:19 2018
 import os
 import numpy as np
 
-import torch
 from torch.utils import data
 
 from utils_common.image import imread_to_float
@@ -171,13 +170,13 @@ def _pad_collate(batch):
                    (int(np.floor((max_width - shape[1])/2)), int(np.ceil((max_width - shape[1])/2)))]
         if len(item) == 2: # no weight
             pad_batch.append((
-                np.pad(item[0], [(0,0)] + padding, 'constant'),
-                np.pad(item[1], padding, 'constant')))
+                np.pad(item[0], [(0,0)] + padding, 'constant', constant_values=-1),
+                np.pad(item[1], padding, 'constant', constant_values=0)))
         else:
             pad_batch.append((
-                np.pad(item[0], [(0,0)] + padding, 'constant'),
-                np.pad(item[1], padding, 'constant'),
-                np.pad(item[2], padding, 'constant')))
+                np.pad(item[0], [(0,0)] + padding, 'constant', constant_values=-1),
+                np.pad(item[1], padding, 'constant', constant_values=0),
+                np.pad(item[2], padding, 'constant', constant_values=0)))
     
     return data.dataloader.default_collate(pad_batch)
 
