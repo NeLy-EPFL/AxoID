@@ -34,7 +34,7 @@ class ImageLoaderDataset(data.Dataset):
             transform: callable (default = None)
                 Transformation to apply to the input images.
             target_transform: callable (default = None)
-                Transformation to apply to the target and mask images.
+                Transformation to apply to the target and weight images.
         """
         super(ImageLoaderDataset, self).__init__()
         self.x_filenames = x_filenames

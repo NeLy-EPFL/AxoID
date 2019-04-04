@@ -88,7 +88,7 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
             duration = time.time() - start_time
             duration_msg = "{:.0f}h {:02.0f}min {:02.0f}s".format(
                     duration // 3600, (duration // 60) % 60, duration % 60)
-            epoch_msg = "Epoch %d/%d  (Elapsed time: %s)" % (epoch + 1, n_epochs, duration_msg)
+            epoch_msg = "Epoch %d/%d  (Elapsed time: %s)" % (epoch, n_epochs - 1, duration_msg)
             print(epoch_msg)
             print("-" * len(epoch_msg))
         
@@ -123,10 +123,9 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
                 batch_y = batch_y_cpu.to(model.device)
                 if len(batch) == 3: # pixel-wise weights
                     batch_w = batch[2]
+                    batch_w = batch_w.to(model.device)
                 else:
                     batch_w = None
-                if batch_w is not None:
-                    batch_w = batch_w.to(model.device)
                 
                 with torch.set_grad_enabled(phase == "train"):
                     # Forward pass
@@ -202,7 +201,7 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
                 print(" - {} = {:.3f}".format(key, history["val_"+key][-1]), end="")
         else:
             print("Best validation {} = {:.3f} at epoch {}.".format(
-                    criterion_metric, best_val_criterion, best_epoch + 1))
+                    criterion_metric, best_val_criterion, best_epoch))
             print("According validation loss = {:.3f}".format(history["val_loss"][best_epoch]),
                   end="")
             for key in metrics.keys():

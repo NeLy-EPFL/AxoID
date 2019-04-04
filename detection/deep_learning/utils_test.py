@@ -37,7 +37,7 @@ def predict(model, dataloader, discard_target=True):
     return predictions.cpu()
     
 def predict_stack(model, stack, batch_size, input_channels="RG", 
-                  channels_last=False, transform=None):
+                  numpy_channels_last=True, transform=None):
     """Output predictions for the given image stack and model.
     
     `stack` can either be the filename (`input_channels` is then required),
@@ -49,7 +49,7 @@ def predict_stack(model, stack, batch_size, input_channels="RG",
         stack = np.stack([channels[c] for c in input_channels], axis=1)
         stack = torch.from_numpy(stack)
     elif isinstance(stack, np.ndarray):
-        if channels_last: # change to channels first
+        if numpy_channels_last: # change to channels first
             channels = {"R": stack[...,0], "G": stack[...,1], "B": stack[...,2]}
             stack = np.stack([channels[c] for c in input_channels], axis=1)
         stack = torch.from_numpy(stack)
@@ -97,6 +97,32 @@ def evaluate(model, dataloader, metrics):
             
     for key in values.keys():
         values[key] /= len(dataloader.dataset)
+    return values
+
+def evaluate_stack(model, input_stack, target_stack, batch_size, metrics,
+                   input_channels="RG", numpy_channels_last=True, transform=None):
+    """Return the average metric values for the given stack and model."""
+    # Make sure target_stack is in the correct shape
+    if isinstance(target_stack, str):
+        target_stack = imread_to_float(target_stack, scaling=255)
+        target_stack = torch.from_numpy(target_stack)
+    elif isinstance(target_stack, np.ndarray):
+        target_stack = torch.from_numpy(target_stack)
+    elif isinstance(target_stack, torch.Tensor):
+        pass
+    else:
+        raise TypeError("Unknown type %s for the image stack." % type(target_stack))
+        
+    # Make predictions
+    predictions = predict_stack(model, input_stack, batch_size, 
+                                input_channels=input_channels, 
+                                numpy_channels_last=numpy_channels_last, 
+                                transform=transform)
+    
+    # Compute metrics
+    values = {}
+    for key in metrics.keys():
+        values[key] = metrics[key](predictions, target_stack).item()
     return values
 
 
