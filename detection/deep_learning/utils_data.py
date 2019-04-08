@@ -183,7 +183,7 @@ def _pad_collate(batch):
 
 def get_dataloader(data_dir, batch_size, input_channels="RG",
                    shuffle=True,  use_weights=False,
-                   transform=None, target_transform=None, num_workers=4):
+                   transform=None, target_transform=None, num_workers=1):
     """
     Return a dataloader with the data in the given directory.
     
