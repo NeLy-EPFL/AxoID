@@ -7,6 +7,8 @@ Created on Mon Oct 22 13:54:19 2018
 @author: nicolas
 """
 
+import os, sys, shutil
+
 import torch
 
 
@@ -112,7 +114,7 @@ class CustomUNet(torch.nn.Module):
         device: PyTorch device (default = torch.device("cpu"))
             Device to which the model is to be placed
     """
-    def __init__(self, in_channels, u_depth=4, out1_channels=16,
+    def __init__(self, in_channels="RG", u_depth=4, out1_channels=16,
                  activation=torch.nn.ReLU(), batchnorm=True,
                  device=torch.device("cpu")):
         """Initialize the model (see class docstring for arguments description)."""
@@ -170,3 +172,25 @@ class CustomUNet(torch.nn.Module):
         device, _, _ = torch._C._nn._parse_to(*args, **kwargs)
         self.device = device
         return output
+
+
+# Useful function for loading/saving models
+def load_model(model_dir, input_channels="RG", u_depth=4, out1_channels=16, 
+               device=torch.device("cpu")):
+    """Load the model defined/saved in the directory."""
+    # Load the definition of the model (<=> its architecture)
+    sys.path.append(os.path.join(model_dir))
+    from utils_model_save import CustomUNet
+    
+    # Load its state_dict
+    model = CustomUNet(len(input_channels), u_depth=u_depth, 
+                       out1_channels=out1_channels, device=device)
+    model.load_state_dict(torch.load(os.path.join(model_dir, "model_best.pth")))
+    
+    return model
+
+def save_model(model, model_dir, exist_ok=True):
+    """Save the model to the directory."""
+    os.makedirs(model_dir, exist_ok=True)
+    shutil.copy("utils_model.py", os.path.join(model_dir, "utils_model_save.py"))
+    torch.save(model.state_dict(), os.path.join(model_dir, "model_best.pth"))

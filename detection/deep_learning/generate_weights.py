@@ -12,11 +12,10 @@ Created on Wed Feb 20 16:57:32 2019
 """
 
 import os, warnings, argparse
-import numpy as np
-import scipy.ndimage as ndi
 from skimage import io
 
 from utils_common.image import imread_to_float, to_npint
+from .utils_data import compute_weights
 
 def main(args):
     if args.data_dir is None:
@@ -38,12 +37,7 @@ def main(args):
             print("  %d/%d" % (i + 1, len(exp_list)))
             
             seg_stack = imread_to_float(os.path.join(data_dir, set, exp, "seg_ROI.tif"))
-            weights = np.zeros_like(seg_stack)
-            
-            # Loop over frames
-            for j in range(len(seg_stack)):
-                distances = ndi.distance_transform_edt(1 - seg_stack[j])
-                weights[j] = np.exp(- (distances / 3.0) ** 2) - seg_stack[j]
+            weights = compute_weights(seg_stack)
                 
             # Save results
             with warnings.catch_warnings():

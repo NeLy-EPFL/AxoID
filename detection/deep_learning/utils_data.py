@@ -9,6 +9,7 @@ Created on Mon Oct 22 13:54:19 2018
 
 import os
 import numpy as np
+import scipy.ndimage as ndi
 
 from torch.utils import data
 
@@ -149,7 +150,7 @@ def get_filenames(data_dir, use_weights=False, valid_extensions=('.png', '.jpg',
         return x_filenames, y_filenames
 
 
-def _pad_collate(batch):
+def pad_collate(batch):
     """Collate function that pads input/target/mask images to the same size."""
     pad_batch = []
     
@@ -219,7 +220,7 @@ def get_dataloader(data_dir, batch_size, input_channels="RG",
                                  transform=transform, 
                                  target_transform=target_transform)
     return data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
-                           collate_fn=_pad_collate, num_workers=num_workers)
+                           collate_fn=pad_collate, num_workers=num_workers)
 
 
 def get_all_dataloaders(data_dir, batch_size, input_channels="RG", test_dataloader=False,
@@ -399,3 +400,15 @@ def pad_transform_stack(stack, u_depth):
     for i in range(len(stack)):
         pad_stack.append(pad_transform(stack[i], u_depth))
     return np.stack(pad_stack)
+
+def compute_weights(image):
+    """Return the pixel-wise weighting of the binary image."""
+    weights = np.zeros(image.shape)
+    if weights.ndim == 3:
+        for i in range(len(image)):
+            distances = ndi.distance_transform_edt(1 - image[i])
+            weights[i] = np.exp(- (distances / 3.0) ** 2) - image[i]
+    else:
+        distances = ndi.distance_transform_edt(1 - image)
+        weights = np.exp(- (distances / 3.0) ** 2) - image
+    return weights
