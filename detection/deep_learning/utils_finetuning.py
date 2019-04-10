@@ -9,13 +9,16 @@ Created on Mon Apr  8 14:13:08 2019
 
 import copy
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.widgets as widgets
+from skimage import measure, draw
 
 import torch
 
-from .utils_data import pad_collate, normalize_range, pad_transform_stack, compute_weights
-from .utils_loss import get_BCEWithLogits_loss
-from .utils_metric import get_dice_metric
-from .utils_test import evaluate_stack
+from utils_data import pad_collate, normalize_range, pad_transform_stack, compute_weights
+from utils_loss import get_BCEWithLogits_loss
+from utils_metric import get_dice_metric
+from utils_test import evaluate_stack
 
 
 def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
@@ -112,3 +115,86 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
     # Set the model to evaluation mode and return it
     model_ft.eval()
     return model_ft
+
+
+class ROISelector(widgets.LassoSelector):
+    """Use matplotlib to draw ROIs for the given image."""
+    
+    def __init__(self, image):
+        """Create the figure and start the selection."""
+        self.fig = plt.figure(figsize=(9,5))
+        self.fig.suptitle("ROI Selector")
+        
+        # Set first plot: selection
+        self.ax = self.fig.add_subplot(121)
+        self.title = ["0 ROI", "Press backspace to delete last selection", 
+                      "Press enter to validate selected ROIs."]
+        self.ax.set_title("\n".join(self.title))
+        self.ax.imshow(image)
+        
+        # Set the second plot: segmentation results
+        self.ax2 = self.fig.add_subplot(122)
+        self.segmentation = np.zeros(image.shape[:2], np.bool)
+        self.polygons = []
+        self.ax2.imshow(self.segmentation, cmap="gray")
+        
+        # Initialize the LassoSelector
+        super().__init__(self.ax, onselect=self.onselect)
+        
+        self.cid_key_press = self.canvas.mpl_connect("key_press_event", self.key_press)
+        self.fig.tight_layout()
+        self.fig.show()
+
+    def update(self):
+        """Update the display."""
+        # Change title to display number of ROIs
+        _, n_roi = measure.label(self.segmentation, connectivity=1, return_num=True)
+        self.title[0] = "%d ROI" % n_roi + ("s" if n_roi > 1 else "")
+        self.ax.set_title("\n".join(self.title))
+        
+        # Draw images
+        self.ax2.imshow(self.segmentation, cmap="gray")
+        self.fig.canvas.draw_idle()
+    
+    def onselect(self, verts):
+        """Called when the lasso selector is released."""
+        vertices = np.array(verts)
+        
+        # Draw the ROI and keep track of the polygons
+        polygon, = self.ax.fill(vertices[:, 0], vertices[:, 1], "w", alpha=0.5)
+        self.polygons.append(polygon)
+        rr, cc = draw.polygon(vertices[:, 1], vertices[:, 0], shape = self.segmentation.shape)
+        self.segmentation[rr, cc] = True
+        
+        self.update()
+    
+    def disconnect(self):
+        """Stop the ROI selection."""
+        self.disconnect_events()
+        self.canvas.mpl_disconnect(self.cid_key_press)
+        self.update()
+    
+    def key_press(self, event):
+        """Callback for key press events."""
+        if event.key == "enter":
+            # Validate current selection and stop the interaction
+            self.title[1] = ""
+            self.title[2] = "ROIs validated"
+            self.ax.set_title("\n".join(self.title))
+            self.update()
+
+            plt.figure()
+            plt.imshow(self.segmentation, cmap="gray")
+            plt.show()
+            
+            self.disconnect()
+            
+        elif event.key == "backspace" and len(self.polygons) > 0:
+            # Erase last drawn ROI
+            polygon = self.polygons.pop()
+            vertices = polygon.get_xy()
+            rr, cc = draw.polygon(vertices[:, 1], vertices[:, 0], shape = self.segmentation.shape)
+            self.segmentation[rr, cc] = False
+            polygon.remove()
+            
+            self.update()
