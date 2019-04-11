@@ -13,6 +13,7 @@ Created on Thu Mar 14 15:03:31 2019
 import warnings
 import numpy as np
 #TODO: remove after testing
+import matplotlib
 import matplotlib.pyplot as plt
 from skimage import measure
 from skimage import morphology as morph
@@ -50,8 +51,6 @@ class _GCaMP(list):
 
 
 class _Axon():
-    ### TODOs:
-    #   1. 
     """Axon object with an identity and properties linked to 2-photon imaging."""
     
     def __init__(self, identity):
@@ -248,6 +247,9 @@ class InternalModel():
             return np.zeros(seg.shape, np.uint8)
         # One iteration of assignment minimum
         max_iter = max(1, max_iter)
+        if debug:
+            id_cmap = matplotlib.cm.get_cmap('viridis')
+            id_cmap.set_under([0,0,0])
         
         # Extract ROIs and compute local center of mass
         labels = measure.label(seg, connectivity=1)
@@ -323,10 +325,10 @@ class InternalModel():
                 plt.figure(figsize=(8,4))
                 plt.suptitle("First assignment")
                 plt.subplot(121); plt.title("model")
-                plt.imshow(self.image)
+                plt.imshow(self.image, cmap=id_cmap, vmin=1, vmax=self.image.max())
                 plt.plot(self.center_of_mass[1], self.center_of_mass[0], 'rx')
                 plt.subplot(122); plt.title("identity")
-                plt.imshow(identities, vmax=self.image.max())
+                plt.imshow(identities, cmap=id_cmap, vmin=1, vmax=self.image.max())
                 plt.plot(local_CoM[1], local_CoM[0], 'rx')
             
             # Stop if max_iter is reached or no ROI is assigned
@@ -363,10 +365,10 @@ class InternalModel():
                 plt.figure(figsize=(8,4))
                 plt.suptitle("n = %d" % n)
                 plt.subplot(121); plt.title("model")
-                plt.imshow(self.image)
+                plt.imshow(self.image, cmap=id_cmap, vmin=1, vmax=self.image.max())
                 plt.plot(new_model_CoM[1], new_model_CoM[0], 'rx')
                 plt.subplot(122); plt.title("identity")
-                plt.imshow(identities, vmax=self.image.max())
+                plt.imshow(identities, cmap=id_cmap, vmin=1, vmax=self.image.max())
                 plt.plot(new_frame_CoM[1], new_frame_CoM[0], 'rx')
                 plt.show()
         
