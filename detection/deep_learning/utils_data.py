@@ -403,7 +403,7 @@ def pad_transform_stack(stack, u_depth):
 
 def compute_weights(image):
     """Return the pixel-wise weighting of the binary image."""
-    weights = np.zeros(image.shape)
+    weights = np.zeros(image.shape, np.float32)
     if weights.ndim == 3:
         for i in range(len(image)):
             distances = ndi.distance_transform_edt(1 - image[i])

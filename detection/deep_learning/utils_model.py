@@ -114,11 +114,11 @@ class CustomUNet(torch.nn.Module):
         device: PyTorch device (default = torch.device("cpu"))
             Device to which the model is to be placed
     """
-    def __init__(self, in_channels="RG", u_depth=4, out1_channels=16,
+    def __init__(self, in_channels=2, u_depth=4, out1_channels=16,
                  activation=torch.nn.ReLU(), batchnorm=True,
                  device=torch.device("cpu")):
         """Initialize the model (see class docstring for arguments description)."""
-        super(CustomUNet, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.activation = activation
         self.maxpool = torch.nn.MaxPool2d(2)
@@ -168,7 +168,7 @@ class CustomUNet(torch.nn.Module):
     
     def to(self, *args, **kwargs):
         """Send the model to the device, and modify accordingly its `device` attribute."""
-        output = super(CustomUNet, self).to(*args, **kwargs)
+        output = super().to(*args, **kwargs)
         device, _, _ = torch._C._nn._parse_to(*args, **kwargs)
         self.device = device
         return output
