@@ -7,7 +7,7 @@ Created on Mon Apr  8 14:13:08 2019
 @author: nicolas
 """
 
-import copy
+import time, copy
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.widgets as widgets
@@ -26,7 +26,7 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
     """Fine tune the given model on the annotated data, and return the resulting model."""
     u_depth = len(model.convs)
     device = model.device
-    annotated_per_batch = min(len(annotations) - n_valid, batch_size) # number of annotated frames in each batch
+    annotated_per_batch = min(len(annotations) - n_valid, batch_size) 
     metrics = {"dice": get_dice_metric()}
     eval_transform = lambda stack: normalize_range(pad_transform_stack(stack, u_depth))
     
@@ -41,7 +41,7 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
     # Make a copy of the model, and keep track of the best state_dict
     model_ft = copy.deepcopy(model)
     if n_valid > 0:
-        best_state_dict = model_ft.state_dict()
+        best_state_dict = copy.deepcopy(model_ft.state_dict())
     
     # Define loss and optimizer
     loss_fn = get_BCEWithLogits_loss(pos_weight=pos_weight, neg_weight=neg_weight)
@@ -69,7 +69,6 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
         # Extract items from batch and send to model device
         items_annotated = [(i, t, w) for i, t, w in zip(images, targets, weights_batch)]
         batch = pad_collate(items_annotated)
-        
         batch_x = batch[0].to(model.device)
         batch_y = batch[1].to(model.device)
         batch_w = batch[2].to(model.device)
@@ -94,7 +93,7 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
             if best_dice < valid_dice:
                 best_iter = i
                 best_dice = valid_dice
-                best_state_dict = model_ft.state_dict()
+                best_state_dict = copy.deepcopy(model_ft.state_dict())
         else:
             valid_dice = 0.0
         
@@ -118,42 +117,52 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
 
 
 class ROISelector(widgets.LassoSelector):
-    """Use matplotlib to draw ROIs for the given image."""
+    """Use matplotlib to draw ROIs for the given images."""
     
-    def __init__(self, image):
-        """Create the figure and start the selection."""
+    def __init__(self, images):
+        """Create the figure and start the selection with the first frame."""
+        # If single image (RGB), change it to a stack of a single image
+        if images.ndim == 3:
+            self.images = images.copy()[np.newaxis, ...]
+        else:
+            self.images = images.copy()
+        self.index = 0
+        
         self.fig = plt.figure(figsize=(9,5))
-        self.fig.suptitle("ROI Selector")
+        self.fig.suptitle("\n".join(["ROI Selector", 
+                                     "Press backspace to delete last selection", 
+                                     "Press enter to validate selected ROIs"]))
         
         # Set first plot: selection
         self.ax = self.fig.add_subplot(121)
-        self.title = ["0 ROI", "Press backspace to delete last selection", 
-                      "Press enter to validate selected ROIs."]
-        self.ax.set_title("\n".join(self.title))
-        self.ax.imshow(image)
+        self.title = ["Frame 1/%d" % len(self.images), "0 ROI"]
         
         # Set the second plot: segmentation results
         self.ax2 = self.fig.add_subplot(122)
-        self.segmentation = np.zeros(image.shape[:2], np.bool)
+        self.ax2.set_title("Resulting segmentation")
+        self.segmentation = np.zeros(self.images.shape[:-1], np.bool)
         self.polygons = []
-        self.ax2.imshow(self.segmentation, cmap="gray")
+        
+        self.update()
         
         # Initialize the LassoSelector
         super().__init__(self.ax, onselect=self.onselect)
         
         self.cid_key_press = self.canvas.mpl_connect("key_press_event", self.key_press)
-        self.fig.tight_layout()
+        self.fig.tight_layout(rect=[0, 0.03, 1, 0.83])
         self.fig.show()
 
     def update(self):
         """Update the display."""
         # Change title to display number of ROIs
-        _, n_roi = measure.label(self.segmentation, connectivity=1, return_num=True)
-        self.title[0] = "%d ROI" % n_roi + ("s" if n_roi > 1 else "")
+        self.title[0] = "Frame %d/%d" % (self.index + 1, len(self.images))
+        _, n_roi = measure.label(self.segmentation[self.index], connectivity=1, return_num=True)
+        self.title[1] = "%d ROI" % n_roi + ("s" if n_roi > 1 else "")
         self.ax.set_title("\n".join(self.title))
+        self.ax.imshow(self.images[self.index])
         
         # Draw images
-        self.ax2.imshow(self.segmentation, cmap="gray")
+        self.ax2.imshow(self.segmentation[self.index], cmap="gray")
         self.fig.canvas.draw_idle()
     
     def onselect(self, verts):
@@ -163,8 +172,9 @@ class ROISelector(widgets.LassoSelector):
         # Draw the ROI and keep track of the polygons
         polygon, = self.ax.fill(vertices[:, 0], vertices[:, 1], "w", alpha=0.5)
         self.polygons.append(polygon)
-        rr, cc = draw.polygon(vertices[:, 1], vertices[:, 0], shape = self.segmentation.shape)
-        self.segmentation[rr, cc] = True
+        rr, cc = draw.polygon(vertices[:, 1], vertices[:, 0],
+                              shape=self.segmentation[self.index].shape)
+        self.segmentation[self.index, rr, cc] = True
         
         self.update()
     
@@ -172,29 +182,28 @@ class ROISelector(widgets.LassoSelector):
         """Stop the ROI selection."""
         self.disconnect_events()
         self.canvas.mpl_disconnect(self.cid_key_press)
-        self.update()
     
     def key_press(self, event):
         """Callback for key press events."""
         if event.key == "enter":
-            # Validate current selection and stop the interaction
-            self.title[1] = ""
-            self.title[2] = "ROIs validated"
-            self.ax.set_title("\n".join(self.title))
-            self.update()
-
-            plt.figure()
-            plt.imshow(self.segmentation, cmap="gray")
-            plt.show()
-            
-            self.disconnect()
+            # Go to next image, or finish
+            self.index += 1
+            if self.index >= len(self.images):
+                self.fig.suptitle("ROI Selector\nROIs validated")
+                self.fid.canvas.draw_idle()
+                self.disconnect()
+            else:
+                self.polygons = []
+                self.ax.clear()
+                self.update()
             
         elif event.key == "backspace" and len(self.polygons) > 0:
             # Erase last drawn ROI
             polygon = self.polygons.pop()
             vertices = polygon.get_xy()
-            rr, cc = draw.polygon(vertices[:, 1], vertices[:, 0], shape = self.segmentation.shape)
-            self.segmentation[rr, cc] = False
+            rr, cc = draw.polygon(vertices[:, 1], vertices[:, 0],
+                                  shape=self.segmentation[self.index].shape)
+            self.segmentation[self.index, rr, cc] = False
             polygon.remove()
             
             self.update()
