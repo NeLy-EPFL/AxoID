@@ -29,7 +29,7 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
     device = model.device
     annotated_per_batch = min(len(annotations) - n_valid, batch_size) 
     metrics = {"dice": get_dice_metric()}
-    eval_transform = lambda stack: normalize_range(pad_transform_stack(stack, u_depth))
+    input_transform = lambda stack: normalize_range(pad_transform_stack(stack, u_depth))
     
     # Compute class weights (on train data) and pixel-wise weighting images
     pos_count = (annotations[:len(annotations) - n_valid] == 1).sum()
@@ -63,7 +63,7 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
         # Keep only relevant input channels
         images = np.stack([inputs[rand_idx,:,:,0], inputs[rand_idx,:,:,1]], axis=1)
         # Apply train transforms
-        images = normalize_range(pad_transform_stack(images, u_depth))
+        images = input_transform(images)
         targets = pad_transform_stack(annotations[rand_idx], u_depth)
         weights_batch = pad_transform_stack(weights[rand_idx], u_depth)
         
@@ -90,7 +90,7 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
             valid_dice = evaluate_stack(
                     model_ft, inputs[len(annotations) - n_valid:],
                     annotations[len(annotations) - n_valid:], batch_size, 
-                    metrics=metrics, transform=eval_transform)["dice"]
+                    metrics=metrics, transform=input_transform)["dice"]
             if best_dice < valid_dice:
                 best_iter = i
                 best_dice = valid_dice
@@ -103,7 +103,7 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
                 i + 1,
                 evaluate_stack(model_ft, inputs[:len(annotations) - n_valid], 
                                annotations[:len(annotations) - n_valid], batch_size, 
-                               metrics=metrics, transform=eval_transform)["dice"],
+                               metrics=metrics, transform=input_transform)["dice"],
                 valid_dice))
                 
     # Load best model found
@@ -238,10 +238,11 @@ class ROIAnnotator():
         self.window = window_name
         self.tb_brush_size = "Brush size"
         self.tb_alpha = "ROI opacity"
+        self.tb_mode = "0: Brush\n1: Contour"
         
         self.idx = 0 # index of the current image to annotated
         self.segmentations = np.zeros(self.images.shape[:-1], np.bool)
-        # Lists of arrays with the brushstrokes images (useful for undo/redo)
+        # Lists of arrays with the brushstrokes images (useful for undo)
         self.brushstrokes = []
         for _ in range(len(self.images)):
             self.brushstrokes.append([])
@@ -301,8 +302,15 @@ class ROIAnnotator():
         
         cv2.imshow(self.window, final_img)
     
-    def mouse_callback(self, event, x, y, flags, param):
-        """Mouse callback for the OpenCV window."""
+    def tb_mode_callback(self, position):
+        """Callback of the mode trackbar that adapts the drawing mode."""
+        if position == 0:
+            cv2.setMouseCallback(self.window, self.paintbrush_callback)
+        elif position == 1:
+            cv2.setMouseCallback(self.window, self.contour_callback)
+    
+    def paintbrush_callback(self, event, x, y, flags, param):
+        """Paintbrush mouse callback for the OpenCV window."""
         # Start drawing if on the image
         if event == cv2.EVENT_LBUTTONDOWN and \
            x < self.images.shape[2] and y < self.images.shape[1]:
@@ -315,7 +323,7 @@ class ROIAnnotator():
         elif event == cv2.EVENT_MOUSEMOVE:
             brush_size = cv2.getTrackbarPos(self.tb_brush_size, self.window)
             # Draw the cursor under the mouse
-            self.cursor = np.zeros(self.images.shape[1:], self.images.dtype)
+            self.cursor = np.zeros_like(self.cursor)
             cv2.line(self.cursor, (x, y), (x, y), (1.0, 1.0, 1.0), brush_size)
             
             # Continue the brush stroke
@@ -327,9 +335,41 @@ class ROIAnnotator():
         elif event == cv2.EVENT_LBUTTONUP:
             self.drawing = False
     
+    def contour_callback(self, event, x, y, flags, param):
+        """Contour drawing mouse callback for the OpenCV window."""
+        # Start drawing if on the image
+        if event == cv2.EVENT_LBUTTONDOWN and \
+           x < self.images.shape[2] and y < self.images.shape[1]:
+            self.drawing = True
+            self.x, self.y = x, y
+            self.brushstrokes[self.idx].append(np.zeros(self.images.shape[1:-1]))
+            cv2.line(self.brushstrokes[self.idx][-1], (x, y), (self.x, self.y), 1.0, 1)
+            self.vertices = [(x, y)]
+            
+        elif event == cv2.EVENT_MOUSEMOVE:
+            # Draw the 1-pixel cursor under the mouse
+            self.cursor = np.zeros_like(self.cursor)
+            cv2.line(self.cursor, (x, y), (x, y), (1.0, 1.0, 1.0), 1)
+            
+            # Continue the contour
+            if self.drawing == True:
+                cv2.line(self.brushstrokes[self.idx][-1], (x, y), (self.x, self.y), 1.0, 1)
+                self.x, self.y = x, y
+                self.vertices.append((x, y))
+                
+        # Create a polygon out of the contour, and fill it
+        elif event == cv2.EVENT_LBUTTONUP:
+            self.drawing = False
+            vertices = np.array(self.vertices)
+            cv2.fillPoly(self.brushstrokes[self.idx][-1], [vertices], 1.0)
+            self.vertices = None
+    
     def key_callback(self, key):
         """Key callback for the OpenCV window."""
         terminate = False
+        # If currently drawing, ignore key press
+        if self.drawing:
+            return terminate
         
         # Escape: close the window and stop the annotation
         if key == 27:
@@ -362,14 +402,15 @@ class ROIAnnotator():
         """Main loop of the ROI annotation."""
         # Create the window
         cv2.namedWindow(self.window, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(self.window, 2 * (self.images.shape[2] * 2 + self.border_margin),
-                         2 * self.images.shape[1])
-        cv2.setMouseCallback(self.window, self.mouse_callback)
+        cv2.resizeWindow(self.window, int(1.5 * (self.images.shape[2] * 2 + self.border_margin)),
+                         int(1.5 * self.images.shape[1]))
+        cv2.setMouseCallback(self.window, self.paintbrush_callback)
         
         # Create the trackbars
         cv2.createTrackbar(self.tb_brush_size, self.window, 5, 10, lambda x: None)
         cv2.setTrackbarMin(self.tb_brush_size, self.window, 1)
         cv2.createTrackbar(self.tb_alpha, self.window, 5, 10, lambda x: None)
+        cv2.createTrackbar(self.tb_mode, self.window, 0, 1, self.tb_mode_callback)
         
         # Main loop
         terminate = False
