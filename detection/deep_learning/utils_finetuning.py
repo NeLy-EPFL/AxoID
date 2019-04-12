@@ -22,14 +22,22 @@ from utils_metric import get_dice_metric
 from utils_test import evaluate_stack
 
 
-def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
-              batch_size=16, learning_rate = 0.0005, verbose=1):
+def fine_tune(model, inputs, annotations, weights=None, shuffle=True, 
+              n_iter=200, n_valid=1, batch_size=16, learning_rate = 0.0005, verbose=1):
     """Fine tune the given model on the annotated data, and return the resulting model."""
     u_depth = len(model.convs)
     device = model.device
     annotated_per_batch = min(len(annotations) - n_valid, batch_size) 
     metrics = {"dice": get_dice_metric()}
     input_transform = lambda stack: normalize_range(pad_transform_stack(stack, u_depth))
+    
+    # Optional shuffling
+    if shuffle:
+        indices = np.random.permutation(len(inputs))
+        inputs = inputs.copy()[indices]
+        annotations = annotations.copy()[indices]
+        if weights is not None:
+            weights = weights.copy()[indices]
     
     # Compute class weights (on train data) and pixel-wise weighting images
     pos_count = (annotations[:len(annotations) - n_valid] == 1).sum()
@@ -51,11 +59,21 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
     # Set model to training mode
     model_ft.train()
     
+    # Initialize best network
+    if n_valid > 0:
+        valid_dice = evaluate_stack(
+                model_ft, inputs[len(annotations) - n_valid:],
+                annotations[len(annotations) - n_valid:], batch_size, 
+                metrics=metrics, transform=input_transform)["dice"]
+        best_iter = -1
+        best_dice = valid_dice
+        best_state_dict = copy.deepcopy(model_ft.state_dict())
+        if verbose:
+            print("Initial val_dice = %.6f" % valid_dice)
+        
     # Iterate over the data
     if verbose:
         print("Iteration (over %d): " % n_iter)
-    if n_valid > 0:
-        best_iter, best_dice = -1, -1
     for i in range(n_iter):
         # Randomly select elements
         rand_idx = np.random.choice(np.arange(len(annotations) - n_valid), 
@@ -65,14 +83,21 @@ def fine_tune(model, inputs, annotations, weights=None, n_iter=200, n_valid=1,
         # Apply train transforms
         images = input_transform(images)
         targets = pad_transform_stack(annotations[rand_idx], u_depth)
-        weights_batch = pad_transform_stack(weights[rand_idx], u_depth)
+        if weights is not None:
+            weights_batch = pad_transform_stack(weights[rand_idx], u_depth)
         
         # Extract items from batch and send to model device
-        items_annotated = [(i, t, w) for i, t, w in zip(images, targets, weights_batch)]
+        if weights is not None:
+            items_annotated = [(i, t, w) for i, t, w in zip(images, targets, weights_batch)]
+        else:
+            items_annotated = [(i, t) for i, t, w in zip(images, targets)]
         batch = pad_collate(items_annotated)
         batch_x = batch[0].to(model.device)
         batch_y = batch[1].to(model.device)
-        batch_w = batch[2].to(model.device)
+        if weights is not None:
+            batch_w = batch[2].to(model.device)
+        else:
+            batch_w = None
         
         # Forward pass
         y_pred = model_ft(batch_x)
