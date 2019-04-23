@@ -17,45 +17,43 @@ import imgaug.augmenters as iaa
 
 import torch
 
-from utils_data import pad_collate, normalize_range, pad_transform_stack, compute_weights
+from utils_data import pad_collate, normalize_range, pad_transform_stack
 from utils_loss import get_BCEWithLogits_loss
 from utils_metric import get_dice_metric
 from utils_test import evaluate_stack
 
 
-def fine_tune(model, inputs, annotations, weights=None, shuffle=False, data_aug=True,
-              n_iter_max=400, patience=100, n_valid=1, batch_size=16, learning_rate=0.0005, verbose=1):
+def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
+              weights_valid=None, data_aug=True, n_iter_max=400, patience=100,
+              batch_size=16, learning_rate=0.0005, verbose=1):
     """Fine tune the given model on the annotated data, and return the resulting model."""
     u_depth = len(model.convs)
     device = model.device
-    annotated_per_batch = min(len(annotations) - n_valid, batch_size) 
+    annotated_per_batch = min(len(y_train), batch_size)
     metrics = {"dice": get_dice_metric()}
     input_transform = lambda stack: normalize_range(pad_transform_stack(stack, u_depth))
     
-    # Optional shuffling
-    if shuffle:
-        indices = np.random.permutation(len(inputs))
-        inputs = inputs[indices]
-        annotations = annotations[indices]
-        if weights is not None:
-            weights = weights[indices]
-            
+    # Verify validation data
+    if x_valid is not None:
+        if y_valid is None:
+            raise RuntimeError("x_valid is given without y_valid.")
+        if weights is not None and weights_valid is None:
+            raise RuntimeError("Training weights are defined, but not validation weights.")
+                
     # Optional data augmentation
     if data_aug:
         aug_seq = iaa.Affine(scale={"x": (0.95, 1.05), "y": (0.95, 1.05)},
                              rotate=(0, 5), order=0)
     
-    # Compute class weights (on train data) and pixel-wise weighting images
-    pos_count = (annotations[:len(annotations) - n_valid] == 1).sum()
-    neg_count = (annotations[:len(annotations) - n_valid] == 0).sum()
+    # Compute class weights (on train data)
+    pos_count = (y_train == 1).sum()
+    neg_count = (y_train == 0).sum()
     pos_weight = torch.tensor((neg_count + pos_count) / (2 * pos_count)).to(device)
     neg_weight = torch.tensor((neg_count + pos_count) / (2 * neg_count)).to(device)
-    if weights is None:
-        weights = compute_weights(annotations)
     
     # Make a copy of the model, and keep track of the best state_dict
     model_ft = copy.deepcopy(model)
-    if n_valid > 0:
+    if x_valid is not None:
         best_state_dict = copy.deepcopy(model_ft.state_dict())
     
     # Define loss and optimizer
@@ -66,11 +64,9 @@ def fine_tune(model, inputs, annotations, weights=None, shuffle=False, data_aug=
     model_ft.train()
     
     # Initialize best network
-    if n_valid > 0:
-        valid_dice = evaluate_stack(
-                model_ft, inputs[len(annotations) - n_valid:],
-                annotations[len(annotations) - n_valid:], batch_size, 
-                metrics=metrics, transform=input_transform)["dice"]
+    if x_valid is not None:
+        valid_dice = evaluate_stack(model_ft, x_valid, y_valid, batch_size, 
+                                    metrics=metrics, transform=input_transform)["dice"]
         best_iter = -1
         best_dice = valid_dice
         best_state_dict = copy.deepcopy(model_ft.state_dict())
@@ -82,17 +78,17 @@ def fine_tune(model, inputs, annotations, weights=None, shuffle=False, data_aug=
         print("Iteration (max %d): " % n_iter_max)
     for i in range(n_iter_max):
         # If patience is reached, stop the fine tuning
-        if n_valid > 0 and i >= best_iter + patience:
+        if x_valid is not None and i >= best_iter + patience:
             if verbose:
                 print("%d iterations without validation improvements. "
                       "Fine tuning is interrupted at iteration %d." % (patience, i))
             break
         
         # Randomly select elements
-        rand_idx = np.random.choice(np.arange(len(annotations) - n_valid), 
+        rand_idx = np.random.choice(np.arange(len(y_train)), 
                                     size=annotated_per_batch, replace=False)
-        images = inputs[rand_idx]
-        targets = annotations[rand_idx]
+        images = x_train[rand_idx]
+        targets = y_train[rand_idx]
         if weights is not None:
             weights_batch = weights[rand_idx]
         # Apply optional data_aug
@@ -135,11 +131,9 @@ def fine_tune(model, inputs, annotations, weights=None, shuffle=False, data_aug=
         optimizer.step()
         
         # Validation
-        if n_valid > 0:
-            valid_dice = evaluate_stack(
-                    model_ft, inputs[len(annotations) - n_valid:],
-                    annotations[len(annotations) - n_valid:], batch_size, 
-                    metrics=metrics, transform=input_transform)["dice"]
+        if x_valid is not None:
+            valid_dice = evaluate_stack(model_ft, x_valid, y_valid, batch_size, 
+                                        metrics=metrics, transform=input_transform)["dice"]
             if best_dice < valid_dice:
                 best_iter = i
                 best_dice = valid_dice
@@ -150,13 +144,12 @@ def fine_tune(model, inputs, annotations, weights=None, shuffle=False, data_aug=
         if verbose and (i + 1) % 50 == 0:
             print("{}: dice = {:.6f} - val_dice = {:.6f}".format(
                 i + 1,
-                evaluate_stack(model_ft, inputs[:len(annotations) - n_valid], 
-                               annotations[:len(annotations) - n_valid], batch_size, 
+                evaluate_stack(model_ft, x_train, y_train, batch_size,
                                metrics=metrics, transform=input_transform)["dice"],
                 valid_dice))
                 
     # Load best model found
-    if n_valid > 0:
+    if x_valid is not None:
         if verbose:
             print("Best model fine tuned in iteration %d." % best_iter)
         model_ft.load_state_dict(best_state_dict)
