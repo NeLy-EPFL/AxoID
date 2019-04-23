@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.widgets as widgets
 from skimage import measure, draw
 import cv2
+import imgaug.augmenters as iaa
 
 import torch
 
@@ -22,8 +23,8 @@ from utils_metric import get_dice_metric
 from utils_test import evaluate_stack
 
 
-def fine_tune(model, inputs, annotations, weights=None, shuffle=True, 
-              n_iter=200, n_valid=1, batch_size=16, learning_rate = 0.0005, verbose=1):
+def fine_tune(model, inputs, annotations, weights=None, shuffle=False, data_aug=True,
+              n_iter_max=400, patience=100, n_valid=1, batch_size=16, learning_rate=0.0005, verbose=1):
     """Fine tune the given model on the annotated data, and return the resulting model."""
     u_depth = len(model.convs)
     device = model.device
@@ -34,10 +35,15 @@ def fine_tune(model, inputs, annotations, weights=None, shuffle=True,
     # Optional shuffling
     if shuffle:
         indices = np.random.permutation(len(inputs))
-        inputs = inputs.copy()[indices]
-        annotations = annotations.copy()[indices]
+        inputs = inputs[indices]
+        annotations = annotations[indices]
         if weights is not None:
-            weights = weights.copy()[indices]
+            weights = weights[indices]
+            
+    # Optional data augmentation
+    if data_aug:
+        aug_seq = iaa.Affine(scale={"x": (0.95, 1.05), "y": (0.95, 1.05)},
+                             rotate=(0, 5), order=0)
     
     # Compute class weights (on train data) and pixel-wise weighting images
     pos_count = (annotations[:len(annotations) - n_valid] == 1).sum()
@@ -73,18 +79,36 @@ def fine_tune(model, inputs, annotations, weights=None, shuffle=True,
         
     # Iterate over the data
     if verbose:
-        print("Iteration (over %d): " % n_iter)
-    for i in range(n_iter):
+        print("Iteration (max %d): " % n_iter_max)
+    for i in range(n_iter_max):
+        # If patience is reached, stop the fine tuning
+        if n_valid > 0 and i >= best_iter + patience:
+            if verbose:
+                print("%d iterations without validation improvements. "
+                      "Fine tuning is interrupted at iteration %d." % (patience, i))
+            break
+        
         # Randomly select elements
         rand_idx = np.random.choice(np.arange(len(annotations) - n_valid), 
                                     size=annotated_per_batch, replace=False)
+        images = inputs[rand_idx]
+        targets = annotations[rand_idx]
+        if weights is not None:
+            weights_batch = weights[rand_idx]
+        # Apply optional data_aug
+        if data_aug:
+            seq_det = aug_seq.to_deterministic()
+            images = seq_det.augment_images(images)
+            targets = seq_det.augment_images(targets)
+            if weights is not None:
+                weights_batch = seq_det.augment_images(weights_batch)
         # Keep only relevant input channels
-        images = np.stack([inputs[rand_idx,:,:,0], inputs[rand_idx,:,:,1]], axis=1)
+        images = np.stack([images[...,0], images[...,1]], axis=1)
         # Apply train transforms
         images = input_transform(images)
-        targets = pad_transform_stack(annotations[rand_idx], u_depth)
+        targets = pad_transform_stack(targets, u_depth)
         if weights is not None:
-            weights_batch = pad_transform_stack(weights[rand_idx], u_depth)
+            weights_batch = pad_transform_stack(weights_batch, u_depth)
         
         # Extract items from batch and send to model device
         if weights is not None:
@@ -121,9 +145,9 @@ def fine_tune(model, inputs, annotations, weights=None, shuffle=True,
                 best_dice = valid_dice
                 best_state_dict = copy.deepcopy(model_ft.state_dict())
         else:
-            valid_dice = 0.0
+            valid_dice = np.nan
         
-        if verbose and n_iter >= 10 and (i + 1) % (n_iter // 10) == 0:
+        if verbose and (i + 1) % 50 == 0:
             print("{}: dice = {:.6f} - val_dice = {:.6f}".format(
                 i + 1,
                 evaluate_stack(model_ft, inputs[:len(annotations) - n_valid], 
@@ -264,6 +288,7 @@ class ROIAnnotator():
         self.tb_brush_size = "Brush size"
         self.tb_alpha = "ROI opacity"
         self.tb_mode = "0: Brush\n1: Contour"
+        self.tb_frame_num = "Frame"
         
         self.idx = 0 # index of the current image to annotated
         self.segmentations = np.zeros(self.images.shape[:-1], np.bool)
@@ -272,6 +297,7 @@ class ROIAnnotator():
         for _ in range(len(self.images)):
             self.brushstrokes.append([])
         self.drawing = False
+        self.erasing = False
         self.x, self.y = -1, -1
         self.cursor = np.zeros(self.images.shape[1:], self.images.dtype) # cursor image
         self.border_margin = 5 # number of pixels between overlay and segmentation
@@ -285,8 +311,13 @@ class ROIAnnotator():
         alpha = cv2.getTrackbarPos(self.tb_alpha, self.window) / 10
         image = self.images[self.idx]
         # Create the segmentation image
-        self.segmentations[self.idx] = np.max([np.zeros(image.shape[:-1])] + \
-                                               self.brushstrokes[self.idx], axis=0)
+        segmentation = np.zeros(image.shape[:-1])
+        for i in range(len(self.brushstrokes[self.idx]) - 1, -1, -1):
+            # Only write non empty pixels
+            mask = np.logical_and(segmentation == 0,
+                                  self.brushstrokes[self.idx][i] != 0)
+            segmentation[mask] = self.brushstrokes[self.idx][i][mask]
+        self.segmentations[self.idx] = np.where(segmentation > 0, segmentation, 0).astype(np.bool)
         
         # Create the overlay of image and drawn ROIs
         if len(self.brushstrokes[self.idx]) > 0:
@@ -334,16 +365,29 @@ class ROIAnnotator():
         elif position == 1:
             cv2.setMouseCallback(self.window, self.contour_callback)
     
+    def tb_frame_num_callback(self, position):
+        """Callback of the frame trackbar."""
+        self.idx = position
+    
     def paintbrush_callback(self, event, x, y, flags, param):
         """Paintbrush mouse callback for the OpenCV window."""
-        # Start drawing if on the image
-        if event == cv2.EVENT_LBUTTONDOWN and \
+        # If on the image, start drawing
+        if event == cv2.EVENT_LBUTTONDOWN and not self.erasing and \
            x < self.images.shape[2] and y < self.images.shape[1]:
             brush_size = cv2.getTrackbarPos(self.tb_brush_size, self.window)
             self.drawing = True
             self.x, self.y = x, y
             self.brushstrokes[self.idx].append(np.zeros(self.images.shape[1:-1]))
             cv2.line(self.brushstrokes[self.idx][-1], (x, y), (self.x, self.y), 1.0, brush_size)
+        
+        # Or erasing
+        elif event == cv2.EVENT_RBUTTONDOWN and not self.drawing and \
+           x < self.images.shape[2] and y < self.images.shape[1]:
+            brush_size = cv2.getTrackbarPos(self.tb_brush_size, self.window)
+            self.erasing = True
+            self.x, self.y = x, y
+            self.brushstrokes[self.idx].append(np.zeros(self.images.shape[1:-1]))
+            cv2.line(self.brushstrokes[self.idx][-1], (x, y), (self.x, self.y), -1.0, brush_size)
             
         elif event == cv2.EVENT_MOUSEMOVE:
             brush_size = cv2.getTrackbarPos(self.tb_brush_size, self.window)
@@ -352,13 +396,18 @@ class ROIAnnotator():
             cv2.line(self.cursor, (x, y), (x, y), (1.0, 1.0, 1.0), brush_size)
             
             # Continue the brush stroke
-            if self.drawing == True:
+            if self.drawing:
                 cv2.line(self.brushstrokes[self.idx][-1], (x, y), (self.x, self.y), 1.0, brush_size)
+                self.x, self.y = x, y
+            elif self.erasing:
+                cv2.line(self.brushstrokes[self.idx][-1], (x, y), (self.x, self.y), -1.0, brush_size)
                 self.x, self.y = x, y
                 
         # Terminate the brush stroke
         elif event == cv2.EVENT_LBUTTONUP:
             self.drawing = False
+        elif event == cv2.EVENT_RBUTTONUP:
+            self.erasing = False
     
     def contour_callback(self, event, x, y, flags, param):
         """Contour drawing mouse callback for the OpenCV window."""
@@ -396,9 +445,9 @@ class ROIAnnotator():
         if self.drawing:
             return terminate
         
-        # Escape: close the window and stop the annotation
+        # Escape: close the window and stop the annotations
         if key == 27:
-            print("ESC pressed, annotation interrupted.")
+            print("ESC pressed, annotations interrupted.")
             terminate = True
             
         # Backspace: erase last brushstroke
@@ -408,23 +457,23 @@ class ROIAnnotator():
                 
         # Enter: validate current ROIs and go to the next image
         elif key == ord('\r') or key == ord('\n'):
-            self.idx += 1
-            if self.idx >= len(self.images):
-                print("Annotation finished.")
+            if self.idx + 1 >= len(self.images):
+                print("Annotations finished.")
                 terminate = True
+            cv2.setTrackbarPos(self.tb_frame_num, self.window, self.idx + 1)
         
-        # Navigate images with numbers or right/left arrows
-        elif ord('1') <= key <= ord(str(len(self.images))):
-            self.idx = int(chr(key)) - 1
-        elif key == 81: # left arrow
-            self.idx = max(0, self.idx - 1)
-        elif key == 83: # right arrow
-            self.idx = min(len(self.images) - 1, self.idx + 1)
+        # Navigate images with numbers or 'n' / 'p' for next/previous
+        if ord('1') <= key <= ord(str(min(9, len(self.images)))):
+            cv2.setTrackbarPos(self.tb_frame_num, self.window, int(chr(key)) - 1)
+        elif key == ord('p'):
+            cv2.setTrackbarPos(self.tb_frame_num, self.window, max(0, self.idx - 1))
+        elif key == ord('n'):
+            cv2.setTrackbarPos(self.tb_frame_num, self.window, min(len(self.images) - 1, self.idx + 1))
                 
         return terminate
     
     def main(self):
-        """Main loop of the ROI annotation."""
+        """Main loop of the ROIs annotation."""
         # Create the window
         cv2.namedWindow(self.window, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(self.window, int(1.5 * (self.images.shape[2] * 2 + self.border_margin)),
@@ -436,6 +485,8 @@ class ROIAnnotator():
         cv2.setTrackbarMin(self.tb_brush_size, self.window, 1)
         cv2.createTrackbar(self.tb_alpha, self.window, 5, 10, lambda x: None)
         cv2.createTrackbar(self.tb_mode, self.window, 0, 1, self.tb_mode_callback)
+        cv2.createTrackbar(self.tb_frame_num, self.window, 0, len(self.images) - 1,
+                           self.tb_frame_num_callback)
         
         # Main loop
         terminate = False
@@ -446,5 +497,5 @@ class ROIAnnotator():
                 key &= 0xFF # keep only last byte
                 terminate = self.key_callback(key)
         
-        # Terminate the annotation
+        # Terminate the annotations
         cv2.destroyWindow(self.window)
