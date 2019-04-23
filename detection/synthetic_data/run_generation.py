@@ -463,6 +463,6 @@ if __name__ == "__main__":
     # Launch the mask generation over the newly created synthetic dataset
     print("Launching weight generation script...")
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    os.system("python %s --data_dir %s" % \
+    os.system("python %s --data_dir %s --separation_border" % \
               (os.path.join(dir_path, "..", "deep_learning", "generate_weights.py"),
                synth_dir))

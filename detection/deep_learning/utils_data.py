@@ -10,6 +10,7 @@ Created on Mon Oct 22 13:54:19 2018
 import os
 import numpy as np
 import scipy.ndimage as ndi
+from skimage import measure
 
 from torch.utils import data
 
@@ -401,14 +402,37 @@ def pad_transform_stack(stack, u_depth):
         pad_stack.append(pad_transform(stack[i], u_depth))
     return np.stack(pad_stack)
 
-def compute_weights(image):
-    """Return the pixel-wise weighting of the binary image."""
+def _contour_weights(image):
+    """Compute the pixel-wise weighting of ROI contours."""
+    distances = ndi.distance_transform_edt(1 - image)
+    weights = np.exp(- (distances / 3.0) ** 2) - image
+    return weights    
+def _separation_weights(image):
+    """Compute the pixel-wise weighting of separation between close ROIs."""
+    labels, num = measure.label(image, connectivity=1, return_num=True)
+    # If less than 2 ROIs, cannot have any separation border
+    if num < 2:
+        return 0
+    distances = np.zeros(image.shape + (num,), np.float32)
+    for i in range(0, num):
+        distances[...,i] = ndi.distance_transform_edt(labels != (i+1))
+    distances = np.sort(distances)
+    weights = 1 * np.exp(-((distances[...,0] + distances[...,1]) / 6) ** 2) * (1 - image)
+    return weights    
+def compute_weights(image, contour=True, separation=True):
+    """Return the pixel-wise weighting of the binary image/stack."""
+    if not contour and not separation:
+        raise ValueError("contour and separation cannot be both False")
     weights = np.zeros(image.shape, np.float32)
     if weights.ndim == 3:
         for i in range(len(image)):
-            distances = ndi.distance_transform_edt(1 - image[i])
-            weights[i] = np.exp(- (distances / 3.0) ** 2) - image[i]
+            if contour:
+                weights[i] += _contour_weights(image[i])
+            if separation:
+                weights[i] += _separation_weights(image[i])
     else:
-        distances = ndi.distance_transform_edt(1 - image)
-        weights = np.exp(- (distances / 3.0) ** 2) - image
+        if contour:
+            weights += _contour_weights(image)
+        if separation:
+            weights += _separation_weights(image)
     return weights

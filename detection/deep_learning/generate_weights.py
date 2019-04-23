@@ -12,15 +12,16 @@ Created on Wed Feb 20 16:57:32 2019
 """
 
 import os, warnings, argparse
+import numpy as np
 from skimage import io
 
 from utils_common.image import imread_to_float, to_npint
-from .utils_data import compute_weights
+from utils_data import compute_weights
 
 def main(args):
     if args.data_dir is None:
-        data_dir = "/data/talabot/pdm/dataset/"
-        sets = ["train", "validation", "test", "synthetic_2-6_181205"]
+        data_dir = "/data/talabot/datasets/datasets_190401_sep"
+        sets = ["train", "validation", "test", "synthetic_190401"]
     else:
         data_dir = args.data_dir
         sets = [""]
@@ -37,16 +38,17 @@ def main(args):
             print("  %d/%d" % (i + 1, len(exp_list)))
             
             seg_stack = imread_to_float(os.path.join(data_dir, set, exp, "seg_ROI.tif"))
-            weights = compute_weights(seg_stack)
+            weights = compute_weights(seg_stack, contour=True, separation=args.separation_border)
                 
             # Save results
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                io.imsave(os.path.join(data_dir, set, exp, "weights.tif"), to_npint(weights))
+                io.imsave(os.path.join(data_dir, set, exp, "weights.tif"), 
+                          to_npint(weights, dtype=np.uint16, float_scaling=255))
                 os.makedirs(os.path.join(data_dir, set, exp, "wgt_frames"), exist_ok=True)
                 for j in range(len(weights)):
                     io.imsave(os.path.join(data_dir, set, exp, "wgt_frames", "wgt_%04d.png" % j), 
-                              to_npint(weights[j]))
+                              to_npint(weights[j], dtype=np.uint16, float_scaling=255))
 
 
 if __name__ == "__main__":
@@ -58,6 +60,10 @@ if __name__ == "__main__":
             help="directory to the experiments folder. If not set, will use the"
             "one in the code."
     )
+    parser.add_argument(
+            '--separation_border',
+            action="store_true",
+            help="add the weights for separation between close ROIs.")
     args = parser.parse_args()
     
     main(args)
