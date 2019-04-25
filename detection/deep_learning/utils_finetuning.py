@@ -24,7 +24,7 @@ from utils_test import evaluate_stack
 
 
 def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
-              weights_valid=None, data_aug=True, n_iter_max=400, patience=100,
+              data_aug=True, n_iter_max=1000, patience=200,
               batch_size=16, learning_rate=0.0005, verbose=1):
     """Fine tune the given model on the annotated data, and return the resulting model."""
     u_depth = len(model.convs)
@@ -32,13 +32,12 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
     annotated_per_batch = min(len(y_train), batch_size)
     metrics = {"dice": get_dice_metric()}
     input_transform = lambda stack: normalize_range(pad_transform_stack(stack, u_depth))
+    if patience is None or patience <= 0:
+        patience = np.inf
     
     # Verify validation data
-    if x_valid is not None:
-        if y_valid is None:
-            raise RuntimeError("x_valid is given without y_valid.")
-        if weights is not None and weights_valid is None:
-            raise RuntimeError("Training weights are defined, but not validation weights.")
+    if x_valid is not None and y_valid is None:
+        raise RuntimeError("x_valid is given without y_valid.")
                 
     # Optional data augmentation
     if data_aug:
@@ -53,8 +52,6 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
     
     # Make a copy of the model, and keep track of the best state_dict
     model_ft = copy.deepcopy(model)
-    if x_valid is not None:
-        best_state_dict = copy.deepcopy(model_ft.state_dict())
     
     # Define loss and optimizer
     loss_fn = get_BCEWithLogits_loss(pos_weight=pos_weight, neg_weight=neg_weight)
@@ -65,13 +62,13 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
     
     # Initialize best network
     if x_valid is not None:
-        valid_dice = evaluate_stack(model_ft, x_valid, y_valid, batch_size, 
-                                    metrics=metrics, transform=input_transform)["dice"]
         best_iter = -1
-        best_dice = valid_dice
-        best_state_dict = copy.deepcopy(model_ft.state_dict())
+        best_dice = -1
+        best_state_dict = None
         if verbose:
-            print("Initial val_dice = %.6f" % valid_dice)
+            print("Initial val_dice = %.6f" % evaluate_stack(
+                    model_ft, x_valid, y_valid, batch_size, 
+                    metrics=metrics, transform=input_transform)["dice"])
         
     # Iterate over the data
     if verbose:
@@ -110,7 +107,7 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
         if weights is not None:
             items_annotated = [(i, t, w) for i, t, w in zip(images, targets, weights_batch)]
         else:
-            items_annotated = [(i, t) for i, t, w in zip(images, targets)]
+            items_annotated = [(i, t) for i, t in zip(images, targets)]
         batch = pad_collate(items_annotated)
         batch_x = batch[0].to(model.device)
         batch_y = batch[1].to(model.device)
