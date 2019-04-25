@@ -153,12 +153,12 @@ class InternalModel():
         # Iteration of update (useful for moving averages)
         self._update_iter = 0
         # Weights for the data normalization and thresholding in Hungarian assignment
-        self._W_POSITION = 1.0
-        self._W_AREA = 0.5
-        self._W_TDTOM = 1.0
-        self._W_GCAMP = 1.0
+        self.W_POSITION = 1.0
+        self.W_AREA = 0.5
+        self.W_TDTOM = 1.0
+        self.W_GCAMP = 1.0
         # Threshold for Hungarian assignment (weighted by previous weights)
-        self._TH_HUNGARIAN = 1.0
+        self.TH_HUNGARIAN = 1.0
     
     def fit_normalization(self, rgb_stack, seg_stack):
         """Compute center and deviation of ROI properties for normalization purposes."""
@@ -187,31 +187,31 @@ class InternalModel():
                 # GCaMP decrease (cannot be negative)
                 if i > 0:
                     for prev_region in prev_regions:
-                        gcamps.append(max(0,
-                                          - (rgb_stack[i, labels == region.label, 0].mean() - \
-                                             rgb_stack[i-1, prev_labels == prev_region.label, 0].mean())))
+                        gcamp_decrease = - (rgb_stack[i, labels == region.label, 0].mean() - \
+                                            rgb_stack[i-1, prev_labels == prev_region.label, 0].mean())
+                        if gcamp_decrease >= 0:
+                            gcamps.append(gcamp_decrease)
             prev_labels = labels.copy()
             prev_regions = regions.copy()
         
+        # Sets mean and standard deviation (with a minimum to reduce influence
+        # of stochasticity on cost)
         self.norm["position"] = dict()
         self.norm["position"]["mean"] = np.mean(positions, axis=0)
-        self.norm["position"]["std"] = np.std(positions, axis=0) / self._W_POSITION
+        self.norm["position"]["std"] = np.maximum(10.0, np.std(positions, axis=0))
         
         self.norm["area"] = dict()
         self.norm["area"]["mean"] = np.mean(areas)
-        # Increase the std to effectively reduce its importance (<=> weighting)
-        self.norm["area"]["std"] = np.std(areas) / self._W_AREA
+        self.norm["area"]["std"] = max(0.15, np.std(areas))
         
         self.norm["tdTom"] = dict()
         self.norm["tdTom"]["mean"] = np.mean(tdToms)
-        # Set a minimum difference in tdTom to reduce stochasticity effects
-        self.norm["tdTom"]["std"] = max(0.1, np.std(tdToms)) / self._W_TDTOM
+        self.norm["tdTom"]["std"] = max(0.1, np.std(tdToms))
         
         self.norm["gcamp"] = dict()
         # Already positive, no centering as it will directly serves as distance
         self.norm["gcamp"]["mean"] = None
-        # Set a minimum difference in GCaMP to reduce stochasticity effects
-        self.norm["gcamp"]["std"] = max(0.1, np.std(gcamps)) / self._W_GCAMP
+        self.norm["gcamp"]["std"] = max(0.1, np.std(gcamps))
     
     def initialize(self, id_frame, id_seg, add_new_axons=None, time_idx=None):
         """(Re-)Initialize the model with the given identity frame."""
@@ -263,19 +263,19 @@ class InternalModel():
         # Currently, cost = distance in hyperspace(position, area_norm, tdTom) + (optional) decrease in GCaMP
         # Position (row and col)
         x_roi = centroids - local_CoM
-        x_roi = (x_roi - self.norm["position"]["mean"]) / self.norm["position"]["std"]
+        x_roi = (x_roi - self.norm["position"]["mean"]) / self.norm["position"]["std"] * self.W_POSITION
         x_model = np.stack([axon.position for axon in self.axons], axis=0)
-        x_model = (x_model - self.norm["position"]["mean"]) / self.norm["position"]["std"]
+        x_model = (x_model - self.norm["position"]["mean"]) / self.norm["position"]["std"] * self.W_POSITION
         # Area (normed)
         x_roi = np.concatenate((x_roi, areas[:, np.newaxis]), axis=1)
-        x_roi[:,-1] = (x_roi[:,-1] - self.norm["area"]["mean"]) / self.norm["area"]["std"]
+        x_roi[:,-1] = (x_roi[:,-1] - self.norm["area"]["mean"]) / self.norm["area"]["std"] * self.W_AREA
         x_model = np.concatenate((x_model, np.stack([axon.area_norm for axon in self.axons])[:, np.newaxis]), axis=1)
-        x_model[:,-1] = (x_model[:,-1] - self.norm["area"]["mean"]) / self.norm["area"]["std"]
+        x_model[:,-1] = (x_model[:,-1] - self.norm["area"]["mean"]) / self.norm["area"]["std"] * self.W_AREA
         # tdTom
         x_roi = np.concatenate((x_roi, tdToms[:, np.newaxis]), axis=1)
-        x_roi[:,-1] = (x_roi[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"]
+        x_roi[:,-1] = (x_roi[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"] * self.W_TDTOM
         x_model = np.concatenate((x_model, np.stack([axon.tdTom for axon in self.axons])[:, np.newaxis]), axis=1)
-        x_model[:,-1] = (x_model[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"]
+        x_model[:,-1] = (x_model[:,-1] - self.norm["tdTom"]["mean"]) / self.norm["tdTom"]["std"] * self.W_TDTOM
         # If time index given, add GCaMP to the cost by computing decrease from each Axon to ROI
         # Also compute the threshold for "dummy" neurons
         if time_idx is not None and time_idx != 0:
@@ -287,15 +287,15 @@ class InternalModel():
             gcamp_diff = np.nan_to_num(gcamp_diff)
             gcamp_diff *= gcamp_diff > 0
             # Normalize
-            gcamp_diff = gcamp_diff / self.norm["gcamp"]["std"]
+            gcamp_diff = gcamp_diff / self.norm["gcamp"]["std"] * self.W_GCAMP
             
-            thresh_hungarian = self._TH_HUNGARIAN * \
-                np.sqrt(2 * self._W_POSITION ** 2 + self._W_AREA ** 2 + \
-                        self._W_TDTOM ** 2 + self._W_GCAMP ** 2)
+            thresh_hungarian = self.TH_HUNGARIAN * \
+                np.sqrt(2 * self.W_POSITION ** 2 + self.W_AREA ** 2 + \
+                        self.W_TDTOM ** 2 + self.W_GCAMP ** 2)
         else:
-            thresh_hungarian = self._TH_HUNGARIAN * \
-                np.sqrt(2 * self._W_POSITION ** 2 + self._W_AREA ** 2 + \
-                        self._W_TDTOM ** 2)
+            thresh_hungarian = self.TH_HUNGARIAN * \
+                np.sqrt(2 * self.W_POSITION ** 2 + self.W_AREA ** 2 + \
+                        self.W_TDTOM ** 2)
         
         for n in range(max_iter):
             # Build the cost matrix with gcamp differences if applicable
@@ -352,10 +352,10 @@ class InternalModel():
             
             # Recompute positions relative to new center of mass
             x_roi[:,:2] = centroids - new_frame_CoM
-            x_roi[:,:2] = (x_roi[:,:2] - self.norm["position"]["mean"]) / self.norm["position"]["std"]
+            x_roi[:,:2] = (x_roi[:,:2] - self.norm["position"]["mean"]) / self.norm["position"]["std"] * self.W_POSITION
             x_model[:,:2] = np.stack([axon.position for axon in self.axons], axis=0) - \
                             (new_model_CoM - self.center_of_mass)
-            x_model[:,:2] = (x_model[:,:2] - self.norm["position"]["mean"]) / self.norm["position"]["std"]
+            x_model[:,:2] = (x_model[:,:2] - self.norm["position"]["mean"]) / self.norm["position"]["std"] * self.W_POSITION
             
             if debug:
                 identities = np.zeros(seg.shape, np.uint8)
@@ -375,10 +375,10 @@ class InternalModel():
         if debug:
             print(cost_matrix[:,:len(self.axons)], thresh_hungarian)
             print(rows_ids, col_ids)
-            print(self.center_of_mass, new_model_CoM)
-            print(local_CoM, new_frame_CoM)
-            print(x_roi[-1], x_model[-2])
-            print((x_roi[-1] - x_model[-2]) ** 2)
+#            print(self.center_of_mass, new_model_CoM)
+#            print(local_CoM, new_frame_CoM)
+#            print(x_roi[4], x_model[2])
+#            print((x_roi[4] - x_model[2]) ** 2, gcamp_diff[-2, 2] ** 2)
         if return_debug:
             return cost_matrix, rows_ids, col_ids
         
@@ -464,29 +464,29 @@ class InternalModel():
             model_image[i, min_row:max_row, min_col:max_col] = \
                 (axon_seg[a_min_row:a_max_row, a_min_col:a_max_col] * axon.id).astype(model_image.dtype)
         
-        # Then reduce them to one, while adding borders if some axons overlap
-        # Create distance images for each axon
-        dist = []
-        for i in range(model_image.shape[0]):
-            if np.count_nonzero(model_image[i]) == 0:
-                continue
-            dist.append(ndi.distance_transform_edt(model_image[i]))
-        dist = np.array(dist)
-
-        # Centroid of axons for watershed starting points
-        local_maxi = np.zeros(self.image.shape, dtype=np.uint8)
-        for i in range(dist.shape[0]):
-            r, c = self.axons[i].position + self.center_of_mass
-            local_maxi[int(r), int(c)] = self.axons[i].id
+#        # Then reduce them to one, while adding borders if some axons overlap
+#        # Create distance images for each axon
+#        dist = []
+#        for i in range(model_image.shape[0]):
+#            if np.count_nonzero(model_image[i]) == 0:
+#                continue
+#            dist.append(ndi.distance_transform_edt(model_image[i]))
+#        dist = np.array(dist)
+#
+#        # Centroid of axons for watershed starting points
+#        local_maxi = np.zeros(self.image.shape, dtype=np.uint8)
+#        for i in range(dist.shape[0]):
+#            r, c = self.axons[i].position + self.center_of_mass
+#            local_maxi[int(r), int(c)] = self.axons[i].id
+#        
+#        # Watershed with borderlines
+#        with warnings.catch_warnings():
+#            warnings.simplefilter("ignore")
+#            model_image = morph.watershed(-dist.max(0), local_maxi, 
+#                                          mask=model_image.max(0).astype(np.bool), 
+#                                          watershed_line=True)
         
-        # Watershed with borderlines
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            model_image = morph.watershed(-dist.max(0), local_maxi, 
-                                          mask=model_image.max(0).astype(np.bool), 
-                                          watershed_line=True)
-        
-        self.image = model_image
+        self.image = model_image.sum(0)
     
     def __repr__(self):
         """Return the representation of the internal model (cannot be evaluated)."""
