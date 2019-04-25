@@ -377,6 +377,8 @@ class InternalModel():
             print(rows_ids, col_ids)
             print(self.center_of_mass, new_model_CoM)
             print(local_CoM, new_frame_CoM)
+            print(x_roi[-1], x_model[-2])
+            print((x_roi[-1] - x_model[-2]) ** 2)
         if return_debug:
             return cost_matrix, rows_ids, col_ids
         
