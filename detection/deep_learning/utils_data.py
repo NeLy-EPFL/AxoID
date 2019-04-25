@@ -417,13 +417,13 @@ def _separation_weights(image):
     for i in range(0, num):
         distances[...,i] = ndi.distance_transform_edt(labels != (i+1))
     distances = np.sort(distances)
-    weights = 1 * np.exp(-((distances[...,0] + distances[...,1]) / 6) ** 2) * (1 - image)
+    weights = np.exp(-((distances[...,0] + distances[...,1]) / 6) ** 2) * (1 - image)
     return weights    
 def compute_weights(image, contour=True, separation=True):
     """Return the pixel-wise weighting of the binary image/stack."""
-    if not contour and not separation:
-        raise ValueError("contour and separation cannot be both False")
     weights = np.zeros(image.shape, np.float32)
+    if not contour and not separation:
+        return weights
     if weights.ndim == 3:
         for i in range(len(image)):
             if contour:
