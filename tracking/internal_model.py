@@ -335,7 +335,7 @@ class InternalModel():
             if n == (max_iter - 1) or [i for i in col_ids if i < len(self.axons)] == []:
                 break
             
-            # Compute new center of masses based on assigned neurons, weighted by
+            # Compute new centers of mass based on assigned neurons, weighted by
             # the inverse of the cost of their assignment (with an epsilon to avoid division by 0)
             epsilon = 1e-6
             model_weighted_areas = np.array([
@@ -349,6 +349,9 @@ class InternalModel():
                     for i in rows_ids if ids[regions[i].label] != 0])
             frame_centroids = np.array([regions[i].centroid for i in rows_ids if ids[regions[i].label] != 0])
             new_frame_CoM = (frame_centroids * frame_weighted_areas).sum(0) / frame_weighted_areas.sum()
+            # Compute new normed areas by only considering assigned ROIs
+            frame_norm_areas = np.array([region.area for region in regions]).astype(np.float)
+            frame_norm_areas /= np.sum([regions[i].area for i in rows_ids if ids[regions[i].label] != 0])
             
             # Recompute positions relative to new center of mass
             x_roi[:,:2] = centroids - new_frame_CoM
@@ -356,6 +359,9 @@ class InternalModel():
             x_model[:,:2] = np.stack([axon.position for axon in self.axons], axis=0) - \
                             (new_model_CoM - self.center_of_mass)
             x_model[:,:2] = (x_model[:,:2] - self.norm["position"]["mean"]) / self.norm["position"]["std"] * self.W_POSITION
+            # Recompute normed areas
+            x_roi[:,2] = frame_norm_areas
+            x_roi[:,2] = (x_roi[:,2] - self.norm["area"]["mean"]) / self.norm["area"]["std"] * self.W_AREA
             
             if debug:
                 identities = np.zeros(seg.shape, np.uint8)
