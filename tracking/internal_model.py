@@ -9,6 +9,7 @@ Created on Thu Mar 14 15:03:31 2019
 """
 ### TODOs:
 #   1. Deal with deformation that change position w.r.t. CoM
+#   2. Adapt model area with current assignment too
 
 import warnings
 import numpy as np
@@ -138,12 +139,10 @@ class InternalModel():
     #   1. Remove `debug` in match_frame() after testing
     """Model of the axon structure of 2-photon images."""
     
-    def __init__(self, add_new_axons=False):
+    def __init__(self):
         """Create and initialize an internal model."""
         # Container of axons object
         self.axons = []
-        # Boolean deciding if new axons are labelled and added to the model or discarded
-        self.add_new_axons = add_new_axons
         # Normalization factors for axons properties
         self.norm = None
         # Image of the model's axons
@@ -213,14 +212,12 @@ class InternalModel():
         self.norm["gcamp"]["mean"] = None
         self.norm["gcamp"]["std"] = max(0.1, np.std(gcamps))
     
-    def initialize(self, id_frame, id_seg, add_new_axons=None, time_idx=None):
+    def initialize(self, id_frame, id_seg, time_idx=None):
         """(Re-)Initialize the model with the given identity frame."""
         # Re-initialize the model, except for normalization
         if self.norm is None:
             raise RuntimeError("The model needs to be fitted a normalization before its initialization.")
         self.axons = []
-        if add_new_axons is not None:
-            self.add_new_axons = add_new_axons
         self.image = np.zeros(id_seg.shape, np.uint8)
         self._update_iter = 1
         
@@ -241,7 +238,7 @@ class InternalModel():
         self._draw_model()
     
     def match_frame(self, frame, seg, time_idx=None, max_iter=5, debug=False, return_debug=False):
-        """Match axons of the given frame to the model's (new axons are assigned new labels)."""
+        """Match axons of the given frame to the model's."""
         # If no ROI, do nothing
         if seg.sum() == 0:
             return np.zeros(seg.shape, np.uint8)
@@ -304,7 +301,7 @@ class InternalModel():
                 cost_matrix = np.sqrt(cost_matrix ** 2 + gcamp_diff ** 2)
             # Add "dummy" axons in the cost matrix for axons not in the model
             cost_matrix = np.concatenate([cost_matrix, 
-                  np.ones((len(x_roi), len(x_roi))) * thresh_hungarian], axis=1)
+                  np.ones((len(x_roi), len(x_roi))) * max(thresh_hungarian, cost_matrix.min())], axis=1)
             
             # Assign identities through the hungarian method
             rows_ids, col_ids = linear_sum_assignment(cost_matrix)
@@ -316,20 +313,6 @@ class InternalModel():
                     ids.update({region.label: self.axons[int(c_idx)].id})
                 else:
                     ids.update({region.label: 0})
-            
-            if debug and n == 0:
-                identities = np.zeros(seg.shape, np.uint8)
-                for region in regions:
-                    roi = labels == region.label
-                    identities[roi] = ids[region.label]
-                plt.figure(figsize=(8,4))
-                plt.suptitle("First assignment")
-                plt.subplot(121); plt.title("model")
-                plt.imshow(self.image, cmap=id_cmap, vmin=1, vmax=self.image.max())
-                plt.plot(self.center_of_mass[1], self.center_of_mass[0], 'rx')
-                plt.subplot(122); plt.title("identity")
-                plt.imshow(identities, cmap=id_cmap, vmin=1, vmax=self.image.max())
-                plt.plot(local_CoM[1], local_CoM[0], 'rx')
             
             # Stop if max_iter is reached or no ROI is assigned
             if n == (max_iter - 1) or [i for i in col_ids if i < len(self.axons)] == []:
@@ -352,6 +335,8 @@ class InternalModel():
             # Compute new normed areas by only considering assigned ROIs
             frame_norm_areas = np.array([region.area for region in regions]).astype(np.float)
             frame_norm_areas /= np.sum([regions[i].area for i in rows_ids if ids[regions[i].label] != 0])
+            model_norm_areas = np.stack([axon.area for axon in self.axons])
+            model_norm_areas /= np.sum([self.axons[i].area for i in col_ids if i < len(self.axons)])
             
             # Recompute positions relative to new center of mass
             x_roi[:,:2] = centroids - new_frame_CoM
@@ -362,43 +347,126 @@ class InternalModel():
             # Recompute normed areas
             x_roi[:,2] = frame_norm_areas
             x_roi[:,2] = (x_roi[:,2] - self.norm["area"]["mean"]) / self.norm["area"]["std"] * self.W_AREA
+            x_model[:,2] = model_norm_areas
+            x_model[:,2] = (x_model[:,2] - self.norm["area"]["mean"]) / self.norm["area"]["std"] * self.W_AREA
+                    
+        if debug:
+            print(cost_matrix[:,:len(self.axons)], thresh_hungarian)
+            print(rows_ids, col_ids, ids)
+            identities = np.zeros(seg.shape, np.uint8)
+            for region in regions:
+                roi = labels == region.label
+                identities[roi] = ids[region.label]
+            plt.figure(figsize=(8,4))
+            plt.suptitle("Assignment initialization")
+            plt.subplot(121); plt.title("model")
+            plt.imshow(self.image, cmap=id_cmap, vmin=1, vmax=self.image.max())
+            plt.plot(new_model_CoM[1], new_model_CoM[0], 'rx')
+            plt.subplot(122); plt.title("identity")
+            plt.imshow(identities, cmap=id_cmap, vmin=1, vmax=self.image.max())
+            plt.plot(new_frame_CoM[1], new_frame_CoM[0], 'rx')
+            plt.show()
+        
+        # XXX: EM with assignment-dependent cost (~geometric graph matching)
+        # TODOs:
+        #   1. Add optional row order
+        #   2. Add stopping criterion
+        #   3. Maybe weight difference in distance dijj' by distance dij'
+        #   4. Maybe weight angle by distance
+        ################################ NEW ##################################
+        # Normalization factors
+        NORM_D = min(seg.shape) # normalization of the distances
+        D_45 = 0.1 * NORM_D # distance at which the normalization angle equals 45°
+        # Weights for the cost
+        W_D = 6.0
+        W_THETA = 1.0
+        W_A = 3.0
+        W_REPLACE = 1.0 # cost for replacing an already assigned ROI
+        # Threshold for dummy axons for Hungarian
+        TH_DUMMY = 1.5
+        for n in range(max_iter):
+            ## Expectation: compute costs based on previous assignment
+            # Compute new normed areas by only considering assigned ROIs
+            frame_norm_areas = np.array([region.area for region in regions]).astype(np.float)
+            frame_norm_areas /= np.sum([regions[i].area for i in rows_ids if ids[regions[i].label] != 0])
+            model_norm_areas = np.stack([axon.area for axon in self.axons])
+            model_norm_areas /= np.sum([self.axons[i].area for i in col_ids if i < len(self.axons)])
+            cost_area = cdist(frame_norm_areas[:, np.newaxis], model_norm_areas[:, np.newaxis], 'cityblock')
+            # Compute distances and angles cost from ROI to their assigned axon
+            # w.r.t. current ROI/axon
+            cost_distances = np.zeros(cost_area.shape)
+            cost_angles = np.zeros(cost_area.shape)
+            cost_replace = np.zeros(cost_area.shape, np.bool)
+            for i in range(len(regions)):
+                for k in range(len(self.axons)):
+                    n_assigned_roi = 0 # number of other ROIs that have been assigned
+                    for j in rows_ids:
+                        # Pass if same as current ROI, axon, or no assignment
+                        if j == i or ids[regions[j].label] == self.axons[k].id or ids[regions[j].label] == 0:
+                            continue
+                        # Distances
+                        x_roi = centroids[j] - centroids[i]
+                        x_model = self.axons[col_ids[j]].position - self.axons[k].position
+                        cost_distances[i, k] += np.linalg.norm(x_model - x_roi) / NORM_D
+                        # Angles
+                        norm_angle = np.arctan(D_45 / np.linalg.norm(x_model))
+                        angle_diff = np.abs(np.arctan2(x_model[0], x_model[1]) - \
+                                            np.arctan2(x_roi[0], x_roi[1]))
+                        if angle_diff > np.pi:
+                            angle_diff = 2 * np.pi - angle_diff
+                        cost_angles[i, k] += angle_diff / norm_angle
+                        n_assigned_roi += 1
+                    # Add a cost for replacing an already assigned ROI (depending on how many ROIs are left)
+                    if ids[regions[i].label] != self.axons[k].id and ids[regions[i].label] != 0:
+                        cost_replace[i, k] = 1 - n_assigned_roi / (len(self.axons) - 1)
+                    # Normalize by number of ROIs
+                    if n_assigned_roi > 0:
+                        cost_distances[i, k] /= n_assigned_roi
+                        cost_angles[i, k] /= n_assigned_roi
+            cost_matrix = W_D * cost_distances + W_THETA * cost_angles + \
+                          W_A * cost_area + W_REPLACE * cost_replace
+            ## Maximization: compute new assignments based on Hungarian method
+            # Add "dummy" axons in the cost matrix for axons not in the model
+            cost_matrix = np.concatenate([cost_matrix, 
+                  np.ones((len(regions), len(regions))) * max(TH_DUMMY, cost_matrix.min())], axis=1)
             
+            # Assign identities through the hungarian method
+            rows_ids, col_ids = linear_sum_assignment(cost_matrix)
+            
+            ids = dict()
+            for i, region in enumerate(regions):
+                c_idx = col_ids[np.where(rows_ids == i)[0]]
+                if i in rows_ids and c_idx < len(self.axons):
+                    ids.update({region.label: self.axons[int(c_idx)].id})
+                else:
+                    ids.update({region.label: 0})
+        
             if debug:
+                print(cost_matrix[:,:len(self.axons)], cost_matrix[0,len(self.axons)], TH_DUMMY)
+                print(rows_ids, col_ids, ids)
                 identities = np.zeros(seg.shape, np.uint8)
                 for region in regions:
                     roi = labels == region.label
                     identities[roi] = ids[region.label]
                 plt.figure(figsize=(8,4))
-                plt.suptitle("n = %d" % n)
+                plt.suptitle("Iter %d" % n)
                 plt.subplot(121); plt.title("model")
                 plt.imshow(self.image, cmap=id_cmap, vmin=1, vmax=self.image.max())
-                plt.plot(new_model_CoM[1], new_model_CoM[0], 'rx')
                 plt.subplot(122); plt.title("identity")
                 plt.imshow(identities, cmap=id_cmap, vmin=1, vmax=self.image.max())
-                plt.plot(new_frame_CoM[1], new_frame_CoM[0], 'rx')
                 plt.show()
-        
+            
+            # Stop if no ROI is assigned
+            if [i for i in col_ids if i < len(self.axons)] == []:
+                break
+            
         if debug:
-            print(cost_matrix[:,:len(self.axons)], thresh_hungarian)
-            print(rows_ids, col_ids)
-#            print(self.center_of_mass, new_model_CoM)
-#            print(local_CoM, new_frame_CoM)
-#            print(x_roi[4], x_model[2])
-#            print((x_roi[4] - x_model[2]) ** 2, gcamp_diff[-2, 2] ** 2)
+            print(W_A * cost_area, W_D * cost_distances, W_THETA * cost_angles, W_REPLACE * cost_replace, sep="\n")
+            print(W_A * cost_area.mean(), W_D * cost_distances.mean(), W_THETA * cost_angles.mean(), W_REPLACE * cost_replace.mean(), sep="\n")
+        #######################################################################
+        
         if return_debug:
             return cost_matrix, rows_ids, col_ids
-        
-        # Unassigned/new axons are given new labels if applicable
-        if self.add_new_axons:
-            for label, id in ids.items():
-                if id != 0:
-                    continue
-                # Create new axon id
-                new_id = 1
-                while new_id in [axon.id for axon in self.axons] or new_id in ids.values():
-                    new_id += 1
-                ids[label] = new_id
-        
         # Make identity image, and return it
         identities = np.zeros(seg.shape, np.uint8)
         for region in regions:
@@ -414,14 +482,8 @@ class InternalModel():
         regions = measure.regionprops(id_seg, coordinates='rc')
         
         for region in regions:
-            # If new axon, add it to the model or discard it
-            if region.label not in [axon.id for axon in self.axons]:
-                if self.add_new_axons:
-                    axon = _Axon(region.label)
-                    axon.update_axon(id_frame, id_seg, region, time_idx=time_idx)
-                    self.axons.append(axon)
-            # Else, update it
-            else:
+            # If axon in model, update it
+            if region.label in [axon.id for axon in self.axons]:
                 idx = id_to_idx[region.label]
                 self.axons[idx].update_axon(id_frame, id_seg, region, time_idx=time_idx)
         
@@ -496,13 +558,12 @@ class InternalModel():
     
     def __repr__(self):
         """Return the representation of the internal model (cannot be evaluated)."""
-        return "%s(add_new_axons=%r, axons=%r)" % \
-            (self.__class__.__name__, self.add_new_axons, self.axons)
+        return "%s(axons=%r)" % \
+            (self.__class__.__name__, self.axons)
     
     def __str__(self):
         """Return a formatted string of the internal model representation."""
-        string = "Internal model with %d axons: (new axons are %s)" % \
-            (len(self.axons), "added" if self.add_new_axons else "discarded")
+        string = "Internal model with %d axons:" % len(self.axons)
         
         for axon in self.axons:
             string += "\n  - " + str(axon)
