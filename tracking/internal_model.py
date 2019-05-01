@@ -335,7 +335,7 @@ class InternalModel():
             # Compute new normed areas by only considering assigned ROIs
             frame_norm_areas = np.array([region.area for region in regions]).astype(np.float)
             frame_norm_areas /= np.sum([regions[i].area for i in rows_ids if ids[regions[i].label] != 0])
-            model_norm_areas = np.stack([axon.area for axon in self.axons])
+            model_norm_areas = np.stack([axon.area for axon in self.axons]).astype(np.float)
             model_norm_areas /= np.sum([self.axons[i].area for i in col_ids if i < len(self.axons)])
             
             # Recompute positions relative to new center of mass
@@ -373,6 +373,7 @@ class InternalModel():
         #   2. Add stopping criterion
         #   3. Maybe weight difference in distance dijj' by distance dij'
         #   4. Maybe weight angle by distance
+        #   5. Maybe weight dist/angles by height
         ################################ NEW ##################################
         # Normalization factors
         NORM_D = min(seg.shape) # normalization of the distances
@@ -389,7 +390,7 @@ class InternalModel():
             # Compute new normed areas by only considering assigned ROIs
             frame_norm_areas = np.array([region.area for region in regions]).astype(np.float)
             frame_norm_areas /= np.sum([regions[i].area for i in rows_ids if ids[regions[i].label] != 0])
-            model_norm_areas = np.stack([axon.area for axon in self.axons])
+            model_norm_areas = np.stack([axon.area for axon in self.axons]).astype(np.float)
             model_norm_areas /= np.sum([self.axons[i].area for i in col_ids if i < len(self.axons)])
             cost_area = cdist(frame_norm_areas[:, np.newaxis], model_norm_areas[:, np.newaxis], 'cityblock')
             # Compute distances and angles cost from ROI to their assigned axon
