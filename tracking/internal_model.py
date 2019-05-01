@@ -382,7 +382,7 @@ class InternalModel():
         W_D = 6.0
         W_THETA = 1.0
         W_A = 3.0
-        W_REPLACE = 1.0 # cost for replacing an already assigned ROI
+        W_N_AXONS = 1.0 # cost for number of assigned axons
         # Threshold for dummy axons for Hungarian
         TH_DUMMY = 1.5
         for n in range(max_iter):
@@ -397,7 +397,7 @@ class InternalModel():
             # w.r.t. current ROI/axon
             cost_distances = np.zeros(cost_area.shape)
             cost_angles = np.zeros(cost_area.shape)
-            cost_replace = np.zeros(cost_area.shape, np.bool)
+            cost_n_axons = np.zeros(cost_area.shape, np.bool)
             for i in range(len(regions)):
                 for k in range(len(self.axons)):
                     n_assigned_roi = 0 # number of other ROIs that have been assigned
@@ -417,15 +417,14 @@ class InternalModel():
                             angle_diff = 2 * np.pi - angle_diff
                         cost_angles[i, k] += angle_diff / norm_angle
                         n_assigned_roi += 1
-                    # Add a cost for replacing an already assigned ROI (depending on how many ROIs are left)
-                    if ids[regions[i].label] != self.axons[k].id and ids[regions[i].label] != 0:
-                        cost_replace[i, k] = 1 - n_assigned_roi / (len(self.axons) - 1)
+                    # Add a cost for the number of axons that are assigned to ROIs
+                    cost_n_axons[i, k] = 1 - n_assigned_roi / (len(self.axons) - 1)
                     # Normalize by number of ROIs
                     if n_assigned_roi > 0:
                         cost_distances[i, k] /= n_assigned_roi
                         cost_angles[i, k] /= n_assigned_roi
             cost_matrix = W_D * cost_distances + W_THETA * cost_angles + \
-                          W_A * cost_area + W_REPLACE * cost_replace
+                          W_A * cost_area + W_N_AXONS * cost_n_axons
             ## Maximization: compute new assignments based on Hungarian method
             # Add "dummy" axons in the cost matrix for axons not in the model
             cost_matrix = np.concatenate([cost_matrix, 
@@ -462,8 +461,8 @@ class InternalModel():
                 break
             
         if debug:
-            print(W_A * cost_area, W_D * cost_distances, W_THETA * cost_angles, W_REPLACE * cost_replace, sep="\n")
-            print(W_A * cost_area.mean(), W_D * cost_distances.mean(), W_THETA * cost_angles.mean(), W_REPLACE * cost_replace.mean(), sep="\n")
+            print(W_A * cost_area, W_D * cost_distances, W_THETA * cost_angles, W_N_AXONS * cost_n_axons, sep="\n")
+            print(W_A * cost_area.mean(), W_D * cost_distances.mean(), W_THETA * cost_angles.mean(), W_N_AXONS * cost_n_axons.mean(), sep="\n")
         #######################################################################
         
         if return_debug:
