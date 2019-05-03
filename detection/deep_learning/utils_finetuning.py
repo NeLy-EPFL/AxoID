@@ -453,7 +453,7 @@ class ROIAnnotator():
             cv2.setTrackbarPos(self.tb_frame_num, self.window, self.idx + 1)
         
         # Navigate images with numbers or 'n' / 'p' for next/previous
-        if ord('1') <= key <= ord(str(min(9, len(self.images)))):
+        elif ord('1') <= key <= ord(str(min(9, len(self.images)))):
             cv2.setTrackbarPos(self.tb_frame_num, self.window, int(chr(key)) - 1)
         elif key == ord('p'):
             cv2.setTrackbarPos(self.tb_frame_num, self.window, max(0, self.idx - 1))
@@ -475,8 +475,9 @@ class ROIAnnotator():
         cv2.setTrackbarMin(self.tb_brush_size, self.window, 1)
         cv2.createTrackbar(self.tb_alpha, self.window, 5, 10, lambda x: None)
         cv2.createTrackbar(self.tb_mode, self.window, 0, 1, self.tb_mode_callback)
-        cv2.createTrackbar(self.tb_frame_num, self.window, 0, len(self.images) - 1,
-                           self.tb_frame_num_callback)
+        if len(self.images) > 1:
+            cv2.createTrackbar(self.tb_frame_num, self.window, 0, len(self.images) - 1,
+                               self.tb_frame_num_callback)
         
         # Main loop
         terminate = False
