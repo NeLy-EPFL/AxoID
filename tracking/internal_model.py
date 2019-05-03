@@ -10,12 +10,12 @@ Created on Thu Mar 14 15:03:31 2019
 
 import warnings
 import numpy as np
-#TODO: remove after testing
+#TODO: remove matplotlib/pyplot after testing
 import matplotlib
 import matplotlib.pyplot as plt
 from skimage import measure
-from skimage import morphology as morph
-from scipy import ndimage as ndi
+#from skimage import morphology as morph
+#from scipy import ndimage as ndi
 from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
 
@@ -59,8 +59,6 @@ class _Axon():
         self.position = None
         # Area in pixel (mainly for drawing purposes)
         self.area = None
-        # Area normalized by the number of ROI pixel of the frame
-        self.area_norm = None
         # Average tdTomato intensity value
         self.tdTom = None
         # Time serie of GCaMP intensity values
@@ -78,12 +76,10 @@ class _Axon():
                           RuntimeWarning)
         
         roi = id_seg == region.label
-        local_CoM = np.mean(np.nonzero(id_seg), 1)
         
-        position = np.array(region.centroid) - local_CoM
+        position = np.array(region.centroid)
         self.position = _update_mean(self._update_iter, self.position, position)
         self.area = _update_mean(self._update_iter, self.area, region.area)
-        self.area_norm = _update_mean(self._update_iter, self.area_norm, region.area / (id_seg != 0).sum())
         self.tdTom = _update_mean(self._update_iter, self.tdTom, id_frame[roi, 0].mean())
         if time_idx is not None:
             self.gcamp[time_idx] = id_frame[roi, 1].mean()
@@ -120,15 +116,14 @@ class _Axon():
     
     def __repr__(self):
         """Return the representation of the axon object (cannot be evaluated)."""
-        return "%s(id=%r, position=%r, area=%r, area_norm=%r, tdTom=%r, len(gcamp)=%r, shape.shape=%r)" % \
-            (self.__class__.__name__, self.id, self.position, self.area, self.area_norm,
+        return "%s(id=%r, position=%r, area=%r, tdTom=%r, len(gcamp)=%r, shape.shape=%r)" % \
+            (self.__class__.__name__, self.id, self.position, self.area,
              self.tdTom, len(self.gcamp), self.shape.shape)
     
     def __str__(self):
         """Return a formatted string of the axon object representation."""
-        return "Axon %d: position=%s, area=%d, area_norm=%.3f, tdTom=%.3f, len(gcamp)=%d, shape.shape=%s" % \
-            (self.id, self.position, self.area, self.area_norm, self.tdTom, 
-             len(self.gcamp), self.shape.shape)
+        return "Axon %d: position=%s, area=%d, tdTom=%.3f, len(gcamp)=%d, shape.shape=%s" % \
+            (self.id, self.position, self.area, self.tdTom, len(self.gcamp), self.shape.shape)
 
 
 class InternalModel():
@@ -138,80 +133,14 @@ class InternalModel():
         """Create and initialize an internal model."""
         # Container of axons object
         self.axons = []
-        # Normalization factors for axons properties
-        self.norm = None
         # Image of the model's axons
         self.image = None
-        # Coordinate of the center of mass
-        self.center_of_mass = None
         # Iteration of update (useful for moving averages)
         self._update_iter = 0
-        # Weights for the data normalization and thresholding in Hungarian assignment
-        self.W_POSITION = 1.0
-        self.W_AREA = 0.5
-        self.W_TDTOM = 1.0
-        self.W_GCAMP = 1.0
-        # Threshold for Hungarian assignment (weighted by previous weights)
-        self.TH_HUNGARIAN = 1.0
-    
-    def fit_normalization(self, rgb_stack, seg_stack):
-        """Compute center and deviation of ROI properties for normalization purposes."""
-        self.norm = dict()
-        positions = []
-        areas = []
-        tdToms = []
-        gcamps = []
-        
-        # Loop on frames
-        prev_labels = None
-        prev_regions = None
-        for i in range(len(rgb_stack)):
-            labels = measure.label(seg_stack[i], connectivity=1)
-            regions = measure.regionprops(labels, coordinates='rc')
-            local_CoM = np.mean(np.nonzero(labels), 1)
-            
-            # Loop on ROI
-            for region in regions:
-                # Row col coordinates w.r.t. center of mass
-                positions.append(np.array(region.centroid) - local_CoM)
-                # Area normalized by number of ROI pixel in the frame
-                areas.append(region.area / seg_stack[i].sum())
-                # tdTom intensity
-                tdToms.append(rgb_stack[i, labels == region.label, 0].mean())
-                # GCaMP decrease (cannot be negative)
-                if i > 0:
-                    for prev_region in prev_regions:
-                        gcamp_decrease = - (rgb_stack[i, labels == region.label, 0].mean() - \
-                                            rgb_stack[i-1, prev_labels == prev_region.label, 0].mean())
-                        if gcamp_decrease >= 0:
-                            gcamps.append(gcamp_decrease)
-            prev_labels = labels.copy()
-            prev_regions = regions.copy()
-        
-        # Sets mean and standard deviation (with a minimum to reduce influence
-        # of stochasticity on cost)
-        self.norm["position"] = dict()
-        self.norm["position"]["mean"] = np.mean(positions, axis=0)
-        self.norm["position"]["std"] = np.maximum(10.0, np.std(positions, axis=0))
-        
-        self.norm["area"] = dict()
-        self.norm["area"]["mean"] = np.mean(areas)
-        self.norm["area"]["std"] = max(0.15, np.std(areas))
-        
-        self.norm["tdTom"] = dict()
-        self.norm["tdTom"]["mean"] = np.mean(tdToms)
-        self.norm["tdTom"]["std"] = max(0.1, np.std(tdToms))
-        
-        self.norm["gcamp"] = dict()
-        # Already positive, no centering as it will directly serves as distance
-        self.norm["gcamp"]["mean"] = None
-        self.norm["gcamp"]["std"] = max(0.1, np.std(gcamps))
     
     def initialize(self, id_frame, id_seg, time_idx=None):
         """(Re-)Initialize the model with the given identity frame."""
-        # Re-initialize the model, except for normalization
-        if self.norm is None:
-            raise RuntimeError("The model needs to be fitted a normalization before its initialization.")
+        # Re-initialize the model
         self.axons = []
         self.image = np.zeros(id_seg.shape, np.uint8)
         self._update_iter = 1
@@ -221,7 +150,6 @@ class InternalModel():
             id_seg = measure.label(id_seg, connectivity=1)
         
         regions = measure.regionprops(id_seg, coordinates='rc')
-        self.center_of_mass = np.mean(np.nonzero(id_seg), 1)
         
         # Add an axon per ROI
         for region in regions:
@@ -230,13 +158,14 @@ class InternalModel():
             self.axons.append(axon)
             
         # Draw the model
-        self._draw_model()
+        self._draw()
     
     def match_frame(self, frame, seg, time_idx=None, debug=False, return_debug=False):
         """Match axons of the given frame to the model's."""
         # TODOs:
         #   1. Check outer TH_DUMMY
         #   2. TH_DUMMY can adapt based on number of axons ?
+        #   3. Put W/TH as attributes
         # Hyper-parameters (normalization, weight, threshold)
         NORM_DIST = min(seg.shape) # normalization of the distances
         DIST_45 = 0.1 * NORM_DIST # distance at which the normalization angle equals 45°
@@ -350,8 +279,8 @@ class InternalModel():
             identities[roi] = ids[region.label]
         return identities
     
-    def update_model(self, id_frame, id_seg, time_idx=None):
-        """Update the model based on the identity frame (new labels are added as new axons)."""
+    def update(self, id_frame, id_seg, time_idx=None):
+        """Update the model based on the identity frame."""
         # Axons' identity to index mapping
         id_to_idx = {self.axons[i].id: i for i in range(len(self.axons))}
         
@@ -374,13 +303,11 @@ class InternalModel():
         if id_seg.sum() == 0:
             return
         
-        local_CoM = np.mean(np.nonzero(id_seg), 1)
-        self.center_of_mass = _update_mean(self._update_iter, self.center_of_mass, local_CoM)
         self._update_iter += 1
         # Update the model image
-        self._draw_model()
+        self._draw()
     
-    def _draw_model(self):
+    def _draw(self):
         """Update the model image based on the axons' properties."""
         model_image = np.zeros((len(self.axons), ) + self.image.shape, self.image.dtype)
         
@@ -393,7 +320,7 @@ class InternalModel():
                                          (0, 1 - axon_seg.shape[1] % 2)], 'constant')
             
             # Center of the axon on the image
-            center = (axon.position + self.center_of_mass).astype(np.uint16)
+            center = axon.position.astype(np.uint16)
             # Compute row and col coordinates to fit the axon in the image
             a_min_row = (axon_seg.shape[0] // 2 - center[0]).clip(0, axon_seg.shape[0])
             a_min_col = (axon_seg.shape[1] // 2 - center[1]).clip(0, axon_seg.shape[1])
@@ -420,7 +347,7 @@ class InternalModel():
 #        # Centroid of axons for watershed starting points
 #        local_maxi = np.zeros(self.image.shape, dtype=np.uint8)
 #        for i in range(dist.shape[0]):
-#            r, c = self.axons[i].position + self.center_of_mass
+#            r, c = self.axons[i].position
 #            local_maxi[int(r), int(c)] = self.axons[i].id
 #        
 #        # Watershed with borderlines
