@@ -137,6 +137,12 @@ class InternalModel():
         self.image = None
         # Iteration of update (useful for moving averages)
         self._update_iter = 0
+        # Hyper parameters for frame matching (weights and threshold for dummy axons)
+        self.W_DIST = 1.0
+        self.W_ANGLE = 0.1
+        self.W_AREA = 0.1
+        self.IN_TH_DUMMY = 0.3 # inner threshold for dummy axon
+        self.TH_DUMMY = 0.3 # outer threshold for dummy axon
     
     def initialize(self, id_frame, id_seg, time_idx=None):
         """(Re-)Initialize the model with the given identity frame."""
@@ -169,11 +175,7 @@ class InternalModel():
         # Hyper-parameters (normalization, weight, threshold)
         NORM_DIST = min(seg.shape) # normalization of the distances
         DIST_45 = 0.1 * NORM_DIST # distance at which the normalization angle equals 45°
-        W_DIST = 1.0
-        W_ANGLE = 0.1
-        W_AREA = 0.1
-        IN_TH_DUMMY = 0.3 # inner threshold for dummy axon
-        TH_DUMMY = 0.3 # outer threshold for dummy axon
+        
         # If no ROI, do nothing
         if seg.sum() == 0:
             return np.zeros(seg.shape, np.uint8)
@@ -191,7 +193,7 @@ class InternalModel():
         model_areas = model_areas / model_areas.mean()
         
         # Construct the outer cost matrix by looping over ROIs and axons
-        cost_matrix = W_AREA * np.abs(areas[:, np.newaxis] - model_areas[np.newaxis, :])
+        cost_matrix = self.W_AREA * np.abs(areas[:, np.newaxis] - model_areas[np.newaxis, :])
         if debug:
             print(areas, model_areas)
             print("Area cost:\n%s" % cost_matrix)
@@ -219,8 +221,9 @@ class InternalModel():
                     cost_area = np.abs(area_roi[:, np.newaxis] - area_model[np.newaxis, :])
                     
                     # Hungarian assignment method
-                    in_cost_matrix = W_DIST * cost_dist + W_ANGLE * cost_angle + W_AREA * cost_area
-                    in_th_dummy = max(IN_TH_DUMMY, 1.1 * in_cost_matrix.min())
+                    in_cost_matrix = self.W_DIST * cost_dist + self.W_ANGLE * cost_angle + \
+                                     self.W_AREA * cost_area
+                    in_th_dummy = max(self.IN_TH_DUMMY, 1.1 * in_cost_matrix.min())
                     in_cost_matrix = np.concatenate([in_cost_matrix, 
                           np.ones((len(regions) - 1,) * 2) * in_th_dummy], axis=1)
                     row_ids, col_ids = linear_sum_assignment(in_cost_matrix)
@@ -234,13 +237,13 @@ class InternalModel():
                     cost_matrix[i, k] += np.mean(cost)
                     
 #                    if debug and i == 4 and k == 2:
-#                        print("Distance", W_DIST * cost_dist, "Angle",  W_ANGLE * cost_angle,
-#                              "Area", W_AREA * cost_area,
+#                        print("Distance", self.W_DIST * cost_dist, "Angle", self.W_ANGLE * cost_angle,
+#                              "Area", self.W_AREA * cost_area,
 #                              "Total cost", in_cost_matrix[:, :len(self.axons) - 1], sep="\n")
         
         # Add "dummy" axons in the cost matrix for axons not in the model
         cost_matrix = np.concatenate([cost_matrix, 
-              np.ones((len(regions), len(regions))) * max(TH_DUMMY, 1.1 * cost_matrix.min())], axis=1)
+              np.ones((len(regions), len(regions))) * max(self.TH_DUMMY, 1.1 * cost_matrix.min())], axis=1)
         
         # Assign identities through the hungarian method
         row_ids, col_ids = linear_sum_assignment(cost_matrix)
@@ -255,7 +258,7 @@ class InternalModel():
                 ids.update({region.label: 0})
         
         if debug:
-            print(cost_matrix[:,:len(self.axons)], cost_matrix[0,len(self.axons)], TH_DUMMY)
+            print(cost_matrix[:,:len(self.axons)], cost_matrix[0,len(self.axons)], self.TH_DUMMY)
             print(row_ids, col_ids, ids)
             print(cost_matrix[row_ids, col_ids],
                   np.mean([cost_matrix[row_ids[j], col_ids[j]]
