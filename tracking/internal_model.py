@@ -232,20 +232,22 @@ class InternalModel():
         # Draw the model
         self._draw_model()
     
-    def match_frame(self, frame, seg, time_idx=None, max_iter=5, debug=False, return_debug=False):
+    def match_frame(self, frame, seg, time_idx=None, debug=False, return_debug=False):
         """Match axons of the given frame to the model's."""
-        # Hyper-parameters
+        # TODOs:
+        #   1. Check outer TH_DUMMY
+        #   2. TH_DUMMY can adapt based on number of axons ?
+        # Hyper-parameters (normalization, weight, threshold)
         NORM_DIST = min(seg.shape) # normalization of the distances
         DIST_45 = 0.1 * NORM_DIST # distance at which the normalization angle equals 45°
         W_DIST = 1.0
-        W_ANGLE = 1.0
-        W_AREA = 1.0
-        TH_DUMMY = 0.15
+        W_ANGLE = 0.1
+        W_AREA = 0.1
+        IN_TH_DUMMY = 0.3 # inner threshold for dummy axon
+        TH_DUMMY = 0.3 # outer threshold for dummy axon
         # If no ROI, do nothing
         if seg.sum() == 0:
             return np.zeros(seg.shape, np.uint8)
-        # One iteration of assignment minimum
-        max_iter = max(1, max_iter)
         if debug:
             id_cmap = matplotlib.cm.get_cmap('viridis')
             id_cmap.set_under([0,0,0])
@@ -255,30 +257,61 @@ class InternalModel():
         regions = measure.regionprops(labels, coordinates='rc')
         centroids = np.array([region.centroid for region in regions])
         areas = np.array([region.area for region in regions])
+        areas = areas / areas.mean()
+        model_areas = np.array([axon.area for axon in self.axons])
+        model_areas = model_areas / model_areas.mean()
         
         # Construct the outer cost matrix by looping over ROIs and axons
-        cost_matrix = np.zeros((len(regions), len(self.axons)))
-        for i in range(len(regions)):
-            for k in range(len(self.axons)):
-                # Construct the inner cost matrix (without taking ROI i and axon k in account)
-                # Distance cost
-                x_roi = np.delete(centroids, i , 0) - centroids[i]
-                x_model = np.stack([self.axons[j].position for j in range(len(self.axons)) if j != k],
-                                    axis=0) - self.axons[k].position
-                cost_dist = cdist(x_roi, x_model) / NORM_DIST
-                
-                # Hungarian assignment method
-                in_cost_matrix = W_DIST * cost_dist
-                in_cost_matrix = np.concatenate([in_cost_matrix, 
-                      np.ones((len(regions) - 1,) * 2) * max(TH_DUMMY, in_cost_matrix.min())], axis=1)
-                row_ids, col_ids = linear_sum_assignment(in_cost_matrix)
-                
-                # Cost of outer cost matrix is equal to average of inner cost
-                cost_matrix[i, k] = np.mean(in_cost_matrix[row_ids, col_ids])
+        cost_matrix = W_AREA * np.abs(areas[:, np.newaxis] - model_areas[np.newaxis, :])
+        if debug:
+            print(areas, model_areas)
+            print("Area cost:\n%s" % cost_matrix)
+        if len(regions) > 1: # only compute inner cost if more than 1 ROI
+            for i in range(len(regions)):
+                for k in range(len(self.axons)):
+                    # Construct the inner cost matrix (without taking ROI i and axon k in account)
+                    # Distance cost
+                    x_roi = np.delete(centroids, i , 0) - centroids[i]
+                    x_model = np.stack([self.axons[j].position for j in range(len(self.axons)) if j != k],
+                                        axis=0) - self.axons[k].position
+                    cost_dist = cdist(x_roi, x_model) / NORM_DIST
+                    # Angle cost
+                    theta_roi = np.arctan2(x_roi[:, 0], x_roi[:, 1])
+                    theta_model = np.arctan2(x_model[:, 0], x_model[:, 1])
+                    cost_angle = np.abs(theta_roi[:, np.newaxis] - theta_model[np.newaxis, :])
+                    cost_angle[cost_angle > np.pi] = 2 * np.pi - cost_angle[cost_angle > np.pi]
+                    cost_angle /= np.arctan(DIST_45 / np.linalg.norm(x_model, axis=1))
+                    # Weight the distances and angles by the height difference
+                    cost_dist *= seg.shape[0] / (seg.shape[0] + np.abs(x_model[:, 0]))
+                    cost_angle *= seg.shape[0] / (seg.shape[0] + np.abs(x_model[:, 0]))
+                    # Area cost (averaged by mean area)
+                    area_roi = np.delete(areas, i)
+                    area_model = np.delete(model_areas, k)
+                    cost_area = np.abs(area_roi[:, np.newaxis] - area_model[np.newaxis, :])
+                    
+                    # Hungarian assignment method
+                    in_cost_matrix = W_DIST * cost_dist + W_ANGLE * cost_angle + W_AREA * cost_area
+                    in_th_dummy = max(IN_TH_DUMMY, 1.1 * in_cost_matrix.min())
+                    in_cost_matrix = np.concatenate([in_cost_matrix, 
+                          np.ones((len(regions) - 1,) * 2) * in_th_dummy], axis=1)
+                    row_ids, col_ids = linear_sum_assignment(in_cost_matrix)
+                    
+                    # Cost of outer cost matrix is equal to average inner cost
+                    # Keep costs of assigned ROIs
+                    idx = [i for i in range(len(row_ids)) if col_ids[i] < len(self.axons)]
+                    # And dummy costs for unassigned model axons (discard the rest)
+                    cost = np.append(in_cost_matrix[row_ids[idx], col_ids[idx]],
+                                     [in_th_dummy] * max(0, min(len(regions), len(self.axons)) - len(idx)))
+                    cost_matrix[i, k] += np.mean(cost)
+                    
+#                    if debug and i == 4 and k == 2:
+#                        print("Distance", W_DIST * cost_dist, "Angle",  W_ANGLE * cost_angle,
+#                              "Area", W_AREA * cost_area,
+#                              "Total cost", in_cost_matrix[:, :len(self.axons) - 1], sep="\n")
         
         # Add "dummy" axons in the cost matrix for axons not in the model
         cost_matrix = np.concatenate([cost_matrix, 
-              np.ones((len(regions), len(regions))) * max(TH_DUMMY, cost_matrix.min())], axis=1)
+              np.ones((len(regions), len(regions))) * max(TH_DUMMY, 1.1 * cost_matrix.min())], axis=1)
         
         # Assign identities through the hungarian method
         row_ids, col_ids = linear_sum_assignment(cost_matrix)
