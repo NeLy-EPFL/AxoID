@@ -24,7 +24,7 @@ from utils_test import evaluate_stack
 
 
 def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
-              data_aug=True, n_iter_max=1000, patience=200,
+              data_aug=True, n_iter_min=0, n_iter_max=1000, patience=200,
               batch_size=16, learning_rate=0.0005, verbose=1):
     """Fine tune the given model on the annotated data, and return the resulting model."""
     u_depth = len(model.convs)
@@ -75,7 +75,7 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
         print("Iteration (max %d): " % n_iter_max)
     for i in range(n_iter_max):
         # If patience is reached, stop the fine tuning
-        if x_valid is not None and i >= best_iter + patience:
+        if x_valid is not None and i >= n_iter_min and i >= best_iter + patience:
             if verbose:
                 print("%d iterations without validation improvements. "
                       "Fine tuning is interrupted at iteration %d." % (patience, i))
