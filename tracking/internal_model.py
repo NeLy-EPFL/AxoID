@@ -14,8 +14,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from skimage import measure
-#from skimage import morphology as morph
-#from scipy import ndimage as ndi
 from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
 
@@ -135,6 +133,8 @@ class InternalModel():
         self.axons = []
         # Image of the model's axons
         self.image = None
+        # Boolean checking if two axons overlap on the model's image
+        self.overlapping_axons = False
         # Iteration of update (useful for moving averages)
         self._update_iter = 0
         # Hyper parameters for frame matching (weights and threshold for dummy axons)
@@ -312,7 +312,8 @@ class InternalModel():
     
     def _draw(self):
         """Update the model image based on the axons' properties."""
-        model_image = np.zeros((len(self.axons), ) + self.image.shape, self.image.dtype)
+        self.overlapping_axons = False
+        model_image = np.zeros(self.image.shape, self.image.dtype)
         
         # First create an image by axon
         for i, axon in enumerate(self.axons):
@@ -327,40 +328,24 @@ class InternalModel():
             # Compute row and col coordinates to fit the axon in the image
             a_min_row = (axon_seg.shape[0] // 2 - center[0]).clip(0, axon_seg.shape[0])
             a_min_col = (axon_seg.shape[1] // 2 - center[1]).clip(0, axon_seg.shape[1])
-            a_max_row = (axon_seg.shape[0] // 2 + model_image.shape[1] - center[0]).clip(0, axon_seg.shape[0])
-            a_max_col = (axon_seg.shape[1] // 2 + model_image.shape[2] - center[1]).clip(0, axon_seg.shape[1])
+            a_max_row = (axon_seg.shape[0] // 2 + model_image.shape[0] - center[0]).clip(0, axon_seg.shape[0])
+            a_max_col = (axon_seg.shape[1] // 2 + model_image.shape[1] - center[1]).clip(0, axon_seg.shape[1])
             
             # Compute the axon position in the image
-            min_row = (center[0] - axon_seg.shape[0] // 2).clip(0, model_image.shape[1])
-            min_col = (center[1] - axon_seg.shape[1] // 2).clip(0, model_image.shape[2])
-            max_row = (center[0] + axon_seg.shape[0] // 2 + 1).clip(0, model_image.shape[1])
-            max_col = (center[1] + axon_seg.shape[1] // 2 + 1).clip(0, model_image.shape[2])
-            model_image[i, min_row:max_row, min_col:max_col] = \
+            min_row = (center[0] - axon_seg.shape[0] // 2).clip(0, model_image.shape[0])
+            min_col = (center[1] - axon_seg.shape[1] // 2).clip(0, model_image.shape[1])
+            max_row = (center[0] + axon_seg.shape[0] // 2 + 1).clip(0, model_image.shape[0])
+            max_col = (center[1] + axon_seg.shape[1] // 2 + 1).clip(0, model_image.shape[1])
+            
+            # Already non-background pixel under the new axon
+            if np.any(model_image[min_row:max_row, min_col:max_col][
+                    axon_seg[a_min_row:a_max_row, a_min_col:a_max_col]]):
+                self.overlapping_axons = True
+            # Copy the axon onto the image
+            model_image[min_row:max_row, min_col:max_col] = \
                 (axon_seg[a_min_row:a_max_row, a_min_col:a_max_col] * axon.id).astype(model_image.dtype)
         
-#        # Then reduce them to one, while adding borders if some axons overlap
-#        # Create distance images for each axon
-#        dist = []
-#        for i in range(model_image.shape[0]):
-#            if np.count_nonzero(model_image[i]) == 0:
-#                continue
-#            dist.append(ndi.distance_transform_edt(model_image[i]))
-#        dist = np.array(dist)
-#
-#        # Centroid of axons for watershed starting points
-#        local_maxi = np.zeros(self.image.shape, dtype=np.uint8)
-#        for i in range(dist.shape[0]):
-#            r, c = self.axons[i].position
-#            local_maxi[int(r), int(c)] = self.axons[i].id
-#        
-#        # Watershed with borderlines
-#        with warnings.catch_warnings():
-#            warnings.simplefilter("ignore")
-#            model_image = morph.watershed(-dist.max(0), local_maxi, 
-#                                          mask=model_image.max(0).astype(np.bool), 
-#                                          watershed_line=True)
-        
-        self.image = model_image.max(0)
+        self.image = model_image
     
     def __repr__(self):
         """Return the representation of the internal model (cannot be evaluated)."""
