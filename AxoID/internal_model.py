@@ -342,8 +342,9 @@ class InternalModel():
                     axon_seg[a_min_row:a_max_row, a_min_col:a_max_col]]):
                 self.overlapping_axons = True
             # Copy the axon onto the image
-            model_image[min_row:max_row, min_col:max_col] = \
-                (axon_seg[a_min_row:a_max_row, a_min_col:a_max_col] * axon.id).astype(model_image.dtype)
+            model_image[min_row:max_row, min_col:max_col] = np.maximum(
+                    model_image[min_row:max_row, min_col:max_col],
+                    (axon_seg[a_min_row:a_max_row, a_min_col:a_max_col] * axon.id).astype(model_image.dtype))
         
         self.image = model_image
     
