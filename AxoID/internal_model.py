@@ -143,8 +143,7 @@ class InternalModel():
         self.W_DIST = 1.0
         self.W_ANGLE = 0.1
         self.W_AREA = 0.1
-        self.IN_TH_DUMMY = 0.3 # inner threshold for dummy axon
-        self.TH_DUMMY = 0.3 # outer threshold for dummy axon
+        self.TH_DUMMY = 0.3 # threshold for dummy axon
     
     def initialize(self, id_frame, id_seg, time_idx=None):
         """(Re-)Initialize the model with the given identity frame."""
@@ -229,17 +228,17 @@ class InternalModel():
                     in_cost_matrix = self.match_inner_cost(x_roi, x_model, 
                                                            area_roi, area_model, 
                                                            seg.shape[0])
-                    in_th_dummy = max(self.IN_TH_DUMMY, 1.1 * in_cost_matrix.min())
+                    in_th_dummy = 1.1 * max(self.TH_DUMMY, in_cost_matrix.min())
                     in_cost_matrix = np.concatenate([in_cost_matrix, 
                           np.ones((len(regions) - 1,) * 2) * in_th_dummy], axis=1)
                     row_ids, col_ids = linear_sum_assignment(in_cost_matrix)
                     
                     # Cost of outer cost matrix is equal to average inner cost
                     # Keep costs of assigned ROIs
-                    idx = [i for i in range(len(row_ids)) if col_ids[i] < len(self.axons)]
+                    idx = [i for i in range(len(row_ids)) if col_ids[i] < len(self.axons) - 1]
                     # And dummy costs for unassigned model axons (discard the rest)
                     cost = np.append(in_cost_matrix[row_ids[idx], col_ids[idx]],
-                                     [in_th_dummy] * max(0, min(len(regions), len(self.axons)) - len(idx)))
+                                     [in_th_dummy] * max(0, min(len(regions), len(self.axons)) - 1 - len(idx)))
                     cost_matrix[i, k] += np.mean(cost)
                     
 #                    if debug and i == 4 and k == 2:
