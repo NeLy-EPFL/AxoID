@@ -137,7 +137,9 @@ class InternalModel():
         self.overlapping_axons = False
         # Iteration of update (useful for moving averages)
         self._update_iter = 0
-        # Hyper parameters for frame matching (weights and threshold for dummy axons)
+        # Hyper parameters for frame matching (normalization, weights and threshold for dummy axons)
+        self.NORM_DIST = None # normalization of the distances to be initialized
+        self.DIST_45 = 0.1 # factor of distance at which the normalization angle equals 45°
         self.W_DIST = 1.0
         self.W_ANGLE = 0.1
         self.W_AREA = 0.1
@@ -150,6 +152,7 @@ class InternalModel():
         self.axons = []
         self.image = np.zeros(id_seg.shape, np.uint8)
         self._update_iter = 1
+        self.NORM_DIST = min(id_seg.shape)
         
         # If id_seg is only segmentation (boolean), create labels
         if id_seg.dtype == np.bool:
@@ -166,16 +169,29 @@ class InternalModel():
         # Draw the model
         self._draw()
     
+    def match_inner_cost(self, x_roi, x_model, area_roi, area_model, frame_height):
+        """Construct the inner cost matrix for assignments."""
+        # Distance cost
+        cost_dist = cdist(x_roi, x_model) / self.NORM_DIST
+        # Angle cost
+        theta_roi = np.arctan2(x_roi[:, 0], x_roi[:, 1])
+        theta_model = np.arctan2(x_model[:, 0], x_model[:, 1])
+        cost_angle = np.abs(theta_roi[:, np.newaxis] - theta_model[np.newaxis, :])
+        cost_angle[cost_angle > np.pi] = 2 * np.pi - cost_angle[cost_angle > np.pi]
+        cost_angle /= np.arctan(self.DIST_45 * self.NORM_DIST / np.linalg.norm(x_model, axis=1))
+        # Weight the distances and angles by the height difference
+        cost_dist *= frame_height / (frame_height + np.abs(x_model[:, 0]))
+        cost_angle *= frame_height / (frame_height + np.abs(x_model[:, 0]))
+        # Area cost (averaged by mean area)
+        cost_area = np.abs(area_roi[:, np.newaxis] - area_model[np.newaxis, :])
+        
+        return self.W_DIST * cost_dist + self.W_ANGLE * cost_angle + self.W_AREA * cost_area
+    
     def match_frame(self, frame, seg, time_idx=None, debug=False, return_debug=False):
         """Match axons of the given frame to the model's."""
         # TODOs:
         #   1. Check outer TH_DUMMY
         #   2. TH_DUMMY can adapt based on number of axons ?
-        #   3. Put W/TH as attributes
-        # Hyper-parameters (normalization, weight, threshold)
-        NORM_DIST = min(seg.shape) # normalization of the distances
-        DIST_45 = 0.1 * NORM_DIST # distance at which the normalization angle equals 45°
-        
         # If no ROI, do nothing
         if seg.sum() == 0:
             return np.zeros(seg.shape, np.uint8)
@@ -201,28 +217,18 @@ class InternalModel():
             for i in range(len(regions)):
                 for k in range(len(self.axons)):
                     # Construct the inner cost matrix (without taking ROI i and axon k in account)
-                    # Distance cost
+                    # Distances
                     x_roi = np.delete(centroids, i , 0) - centroids[i]
                     x_model = np.stack([self.axons[j].position for j in range(len(self.axons)) if j != k],
                                         axis=0) - self.axons[k].position
-                    cost_dist = cdist(x_roi, x_model) / NORM_DIST
-                    # Angle cost
-                    theta_roi = np.arctan2(x_roi[:, 0], x_roi[:, 1])
-                    theta_model = np.arctan2(x_model[:, 0], x_model[:, 1])
-                    cost_angle = np.abs(theta_roi[:, np.newaxis] - theta_model[np.newaxis, :])
-                    cost_angle[cost_angle > np.pi] = 2 * np.pi - cost_angle[cost_angle > np.pi]
-                    cost_angle /= np.arctan(DIST_45 / np.linalg.norm(x_model, axis=1))
-                    # Weight the distances and angles by the height difference
-                    cost_dist *= seg.shape[0] / (seg.shape[0] + np.abs(x_model[:, 0]))
-                    cost_angle *= seg.shape[0] / (seg.shape[0] + np.abs(x_model[:, 0]))
-                    # Area cost (averaged by mean area)
+                    # Areas (averaged by mean area)
                     area_roi = np.delete(areas, i)
                     area_model = np.delete(model_areas, k)
-                    cost_area = np.abs(area_roi[:, np.newaxis] - area_model[np.newaxis, :])
                     
                     # Hungarian assignment method
-                    in_cost_matrix = self.W_DIST * cost_dist + self.W_ANGLE * cost_angle + \
-                                     self.W_AREA * cost_area
+                    in_cost_matrix = self.match_inner_cost(x_roi, x_model, 
+                                                           area_roi, area_model, 
+                                                           seg.shape[0])
                     in_th_dummy = max(self.IN_TH_DUMMY, 1.1 * in_cost_matrix.min())
                     in_cost_matrix = np.concatenate([in_cost_matrix, 
                           np.ones((len(regions) - 1,) * 2) * in_th_dummy], axis=1)
