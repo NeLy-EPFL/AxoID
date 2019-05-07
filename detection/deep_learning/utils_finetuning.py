@@ -72,7 +72,7 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
         
     # Iterate over the data
     if verbose:
-        print("Iteration (max %d): " % n_iter_max)
+        print("Iteration (min: %d - max %d): " % (n_iter_min, n_iter_max))
     for i in range(n_iter_max):
         # If patience is reached, stop the fine tuning
         if x_valid is not None and i >= n_iter_min and i >= best_iter + patience:
@@ -131,7 +131,8 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
         if x_valid is not None:
             valid_dice = evaluate_stack(model_ft, x_valid, y_valid, batch_size, 
                                         metrics=metrics, transform=input_transform)["dice"]
-            if best_dice < valid_dice:
+            # Keep best iteration (or last if at the beginning, i.e., first 10 iters)
+            if best_dice < valid_dice or i < 10:
                 best_iter = i
                 best_dice = valid_dice
                 best_state_dict = copy.deepcopy(model_ft.state_dict())
@@ -149,6 +150,7 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
     if x_valid is not None:
         if verbose:
             print("Best model fine tuned in iteration %d." % best_iter)
+            print("Best dice =", best_dice)
         model_ft.load_state_dict(best_state_dict)
     
     # Set the model to evaluation mode and return it
@@ -268,7 +270,7 @@ class ROIAnnotator():
         # Change from RGB to BGR (for OpenCV compatibility)
         if rgb2bgr:
             self.images = self.images[..., ::-1]
-        # Make sure images is float32
+        # Make sure images are float32
         if self.images.dtype == np.uint8:
             self.images = (self.images / 255).astype(np.float32)
         elif self.images.dtype == np.float64:
@@ -295,6 +297,26 @@ class ROIAnnotator():
         
         # Main function (create and destroy window, deal with loop and waitKey, etc.)
         self.main()
+       
+    def add(self, images, rgb2bgr=True):
+        """Add the images to the annotator."""
+        # Add images to self
+        # Change from RGB to BGR (for OpenCV compatibility)
+        if rgb2bgr:
+            images = images[..., ::-1]
+        # Make sure images are float32
+        if images.dtype == np.uint8:
+            images = (images / 255).astype(self.images.dtype)
+        elif images.dtype == np.float64:
+            images = images.astype(self.images.dtype)
+        self.images = np.append(self.images, images, axis=0)
+        
+        # Add segmentations and brushstrokes
+        self.segmentations = np.append(self.segmentations, 
+                                       np.zeros(images.shape[:-1], np.bool),
+                                       axis=0)
+        for _ in range(len(images)):
+            self.brushstrokes.append([])
     
     def imshow(self):
         """Draw the current image."""
@@ -450,6 +472,7 @@ class ROIAnnotator():
             if self.idx + 1 >= len(self.images):
                 print("Annotations finished.")
                 terminate = True
+                self.idx += 1
             cv2.setTrackbarPos(self.tb_frame_num, self.window, self.idx + 1)
         
         # Navigate images with numbers or 'n' / 'p' for next/previous
@@ -478,6 +501,9 @@ class ROIAnnotator():
         if len(self.images) > 1:
             cv2.createTrackbar(self.tb_frame_num, self.window, 0, len(self.images) - 1,
                                self.tb_frame_num_callback)
+            if self.idx >= len(self.images):
+                self.idx = len(self.images) - 1
+            cv2.setTrackbarPos(self.tb_frame_num, self.window, self.idx)
         
         # Main loop
         terminate = False
