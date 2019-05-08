@@ -49,15 +49,14 @@ def get_rules(image, remove_contradictions=True):
 
 def _verify_frame(rules, label):
     """Verify if the frame violates any rules."""
+    # If no rules, cannot be wrong
+    if rules.size == 0:
+        return False
     orders = get_rules(label)
     verification = np.array([(rules == order[::-1]).all(1) for order in orders])
     return np.any(verification)
-def verify_rules(rules, labels):
-    """Verify if the labels violates any rules."""
-    # If no rules, return None
-    if rules.size == 0:
-        return None
-    
+def rules_violated(rules, labels):
+    """Verify if the labels violates any rules."""    
     if labels.ndim == 2:
         return _verify_frame(rules, labels)
     else:   

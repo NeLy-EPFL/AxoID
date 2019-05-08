@@ -188,9 +188,6 @@ class InternalModel():
     
     def match_frame(self, frame, seg, time_idx=None, debug=False, return_debug=False):
         """Match axons of the given frame to the model's."""
-        # TODOs:
-        #   1. Check outer TH_DUMMY
-        #   2. TH_DUMMY can adapt based on number of axons ?
         # If no ROI, do nothing
         if seg.sum() == 0:
             return np.zeros(seg.shape, np.uint8)

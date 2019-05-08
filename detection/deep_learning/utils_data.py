@@ -422,6 +422,7 @@ def _separation_weights(image):
 def compute_weights(image, contour=True, separation=True):
     """Return the pixel-wise weighting of the binary image/stack."""
     weights = np.zeros(image.shape, np.float32)
+    image = image.astype(np.bool)
     if not contour and not separation:
         return weights
     if weights.ndim == 3:
