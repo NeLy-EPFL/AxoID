@@ -413,11 +413,11 @@ def synthetic_stack(shape, n_images, n_neurons, cyan_gcamp=False, return_label=F
 
 if __name__ == "__main__":
     ## Parameters and constants (shape and n_neurons are below)
-    n_stacks = 31
+    n_stacks = 40
     n_images = 200
     
     date = time.strftime("%y%m%d", time.localtime())
-    synth_dir = "/data/talabot/datasets/datasets_190401/synthetic_%s/" % date
+    synth_dir = "/data/talabot/datasets/datasets_190509/synthetic_%s/" % date
     
     start = time.time()
     for i in range(n_stacks):
