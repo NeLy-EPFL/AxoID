@@ -97,6 +97,7 @@ def shift_image(image, row_shift, col_shift):
 
     if np.can_cast(np.float32, image.dtype): # need to check this, too
         shifted_image = np.abs(np.fft.ifft2(greg, axes=(0, 1)))
+        shifted_image = shifted_image.clip(min=0.0, max=1.0)
     else:
         shifted_image = np.round(np.abs(np.fft.ifft2(greg, axes=(0, 1)))).astype(image.dtype)
 
@@ -160,7 +161,6 @@ def register_stack(stack, ref_num=0, channels=[0,1], return_shifts=False):
         else:
             for c in range(stack.shape[-1]):
                 reg_stack[i,:,:,c] = shift_image(stack[i,:,:,c], row_list[i], col_list[i])
-    reg_stack = reg_stack.clip(min=0.0, max=1.0)
     
     if return_shifts:
         return reg_stack, row_list, col_list

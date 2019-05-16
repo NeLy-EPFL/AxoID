@@ -97,7 +97,9 @@ def flood_fill(image, fill_val=1):
     
     return image_out
 
-def nlm_denoising(rgb_stack, img_id=None, h_red=11, h_green=11, registration=False):
+def nlm_denoising(rgb_stack, img_id=None, h_red=11, h_green=11, 
+                  registration=False, reg_ref=0,
+                  return_rgb=False):
     """Apply Non-Local means denoising to the stack, or the specific image if 
     img_id is given."""
     temporal_window_size = 5
@@ -105,10 +107,10 @@ def nlm_denoising(rgb_stack, img_id=None, h_red=11, h_green=11, registration=Fal
     
     stack = to_npint(rgb_stack)
     if registration:
-        stack, reg_rows, reg_cols = register_stack(stack, channels=[0,1], return_shifts=True)
+        stack = register_stack(stack, ref_num=reg_ref)
     
     # Loop the stack so that masks can be made for first and last images
-    loop_stack = np.concatenate((stack[- (temporal_window_size - 1)//2:], 
+    loop_stack = np.concatenate((stack[- (temporal_window_size - 1)//2:],
                                  stack, 
                                  stack[:(temporal_window_size - 1)//2]))
     
@@ -130,5 +132,9 @@ def nlm_denoising(rgb_stack, img_id=None, h_red=11, h_green=11, registration=Fal
         lambda: denoise_stack(0, h_red),
         lambda: denoise_stack(1, h_green)
     )
-    denoised = np.maximum(denoised_r, denoised_g)
+    
+    if return_rgb:
+        denoised = np.stack([denoised_r, denoised_g, denoised_g], axis=0)
+    else:
+        denoised = np.maximum(denoised_r, denoised_g)
     return denoised
