@@ -134,7 +134,7 @@ def nlm_denoising(rgb_stack, img_id=None, h_red=11, h_green=11,
     )
     
     if return_rgb:
-        denoised = np.stack([denoised_r, denoised_g, denoised_g], axis=0)
+        denoised = np.stack([denoised_r, denoised_g, denoised_g], axis=-1)
     else:
         denoised = np.maximum(denoised_r, denoised_g)
     return denoised
