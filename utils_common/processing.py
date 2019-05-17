@@ -137,4 +137,7 @@ def nlm_denoising(rgb_stack, img_id=None, h_red=11, h_green=11,
         denoised = np.stack([denoised_r, denoised_g, denoised_g], axis=-1)
     else:
         denoised = np.maximum(denoised_r, denoised_g)
+    
+    if issubclass(rgb_stack.dtype.type, np.floating):
+        denoised = (denoised / 255).astype(rgb_stack.dtype)
     return denoised
