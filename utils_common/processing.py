@@ -9,7 +9,7 @@ Created on Mon Nov 12 09:28:07 2018
 
 import warnings
 import numpy as np
-from skimage import filters
+from skimage import filters, measure
 from skimage import morphology as morph
 from skimage.morphology import disk
 import cv2
@@ -96,6 +96,55 @@ def flood_fill(image, fill_val=1):
     image_out[mask] = fill_val
     
     return image_out
+
+def _connected(label, region1, region2, connectivity):
+    """Return the connectivity state between the 2 regions of the label image."""
+    num_obj1 = measure.label(label == region1.label, connectivity=connectivity,
+                             return_num=True)[1]
+    num_obj2 = measure.label(label == region2.label, connectivity=connectivity,
+                             return_num=True)[1]
+    num_obj_tot = measure.label(label == region1.label, connectivity=connectivity,
+                                return_num=True)[1]
+    # If there are less objects in the combined frames, the regions must be connected
+    if num_obj_tot < num_obj1 + num_obj2:
+        return True
+    else:
+        return False
+def fuse_small_objects(label, min_area, connectivity=1):
+    """Fuse labelled objects smaller than min_area to other connected ones."""
+    regions = measure.regionprops(label)
+    small_regions = [region for region in regions if region.area < min_area]
+    if len(small_regions) == 0:
+        label_out =  measure.label(label, connectivity=connectivity)
+        return label_out
+    
+    # Create an image with fused connected small regions
+    fused_small = np.sum([label == reg.label for reg in small_regions], axis=0)
+    fused_small = measure.label(fused_small, connectivity=connectivity)
+    
+    # Create an image with large regions + fused small
+    label_out = label.copy()
+    label_out[fused_small != 0] = fused_small[fused_small != 0] + label_out.max()
+    
+    # Fuse remaining small areas with their smallest neighbouring region
+    regions = measure.regionprops(label_out)
+    small_regions = [region for region in regions if region.area < min_area]
+    for region in small_regions:
+        # Look for neighbours <=> connected regions
+        neighbours = [] # store (label, area) of each neighbour as a dict
+        for region2 in regions:
+            if region.label == region2.label:
+                continue
+            if _connected(label_out, region, region2, connectivity):
+                neighbours.append({"label": region2.label, "area": region2.area})
+        # Apply label of smallest neighbour
+        if len(neighbours) > 0:
+            sorted_neighb = sorted(neighbours, key=lambda n: n["area"])
+            label_out[label_out == region.label] = sorted_neighb[0]["label"]
+    
+    # Make unique labels starting at 1
+    label_out = measure.label(label_out, connectivity=connectivity)
+    return label_out
 
 def nlm_denoising(rgb_stack, img_id=None, h_red=11, h_green=11, 
                   registration=False, reg_ref=0,
