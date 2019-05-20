@@ -17,7 +17,7 @@ def loss_mae(predictions, targets, reduction='mean'):
         return np.abs(targets - predictions).mean()
     elif reduction in ["sum"]:
         return np.abs(targets - predictions).sum()
-    elif reduction in ["array", "no_reduction", "full"]:
+    elif reduction in [None, "none", "array", "no_reduction", "full"]:
         return np.abs(targets - predictions)
     else:
         raise ValueError("""Unknown reduction method "%s".""" % reduction)
@@ -32,7 +32,7 @@ def loss_l2(predictions, targets, reduction='mean'):
         return np.mean(loss)
     elif reduction in ["sum"]:
         return np.sum(loss)
-    elif reduction in ["array", "no_reduction", "full"]:
+    elif reduction in [None, "none", "array", "no_reduction", "full"]:
         return np.array(loss)
     else:
         raise ValueError("""Unknown reduction method "%s".""" % reduction)
@@ -51,7 +51,7 @@ def dice_coef(predictions, targets, reduction='mean'):
         return np.mean(dice)
     elif reduction in ["sum"]:
         return np.sum(dice)
-    elif reduction in ["array", "no_reduction", "full"]:
+    elif reduction in [None, "none", "array", "no_reduction", "full"]:
         return np.array(dice)
     else:
         raise ValueError("""Unknown reduction method "%s".""" % reduction)
@@ -91,7 +91,7 @@ def crop_metric(metric_fn, predictions, targets, scale=4.0, reduction='mean'):
         return np.sum(metric) / (len(targets) - n_no_positive)
     elif reduction in ["sum"]:
         return np.sum(metric)
-    elif reduction in ["array", "no_reduction", "full"]:
+    elif reduction in [None, "none", "array", "no_reduction", "full"]:
         return np.array(metric)
     else:
         raise ValueError("""Unknown reduction method "%s".""" % reduction)
