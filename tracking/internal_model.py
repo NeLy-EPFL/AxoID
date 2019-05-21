@@ -209,7 +209,8 @@ class InternalModel():
         if debug:
             print(areas, model_areas)
             print("Area cost:\n%s" % cost_matrix)
-        if len(regions) > 1: # only compute inner cost if more than 1 ROI
+        # Only compute inner cost if more than 1 ROI and axon
+        if len(regions) > 1 and len(self.axons) > 1:
             for i in range(len(regions)):
                 for k in range(len(self.axons)):
                     # Construct the inner cost matrix (without taking ROI i and axon k in account)
