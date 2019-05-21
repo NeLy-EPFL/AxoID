@@ -25,7 +25,9 @@ def get_rules(image, remove_contradictions=True):
             continue
         for j in range(0, len(order) - 1):
             for k in range(j + 1, len(order)):
-                rules.append((order[j], order[k]))
+                # Do not add "self-rules" (e.g.: (1,1))
+                if order[j] != order[k]:
+                    rules.append((order[j], order[k]))
     
     # Stop there if no rules were found
     if rules == []:
