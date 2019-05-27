@@ -1,4 +1,4 @@
-# Data files
+# Images
 *.tif
 *.png
 
@@ -6,13 +6,12 @@
 
 # Caches and checkpoints
 **/__pycache__
-*/.ipynb_checkpoints
-.ipynb_checkpoints
+**/.ipynb_checkpoints
 
 # Pytorch models/checkpoints
-detection/deep_learning/models
+data/models
 *.pt
 *.pth
 
 # Results
-detection/deep_learning/outputs
+data/outputs
