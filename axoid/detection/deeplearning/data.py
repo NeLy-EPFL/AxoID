@@ -14,7 +14,7 @@ from skimage import measure
 
 from torch.utils import data
 
-from utils_common.image import imread_to_float
+from axoid.utils.image import imread_to_float
 
 
 class ImageLoaderDataset(data.Dataset):

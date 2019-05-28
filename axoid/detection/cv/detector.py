@@ -12,9 +12,9 @@ from skimage import measure, filters
 from skimage import morphology as morph
 from skimage.morphology import disk
 
-from ...utils.image import to_npint
-from ...utils.register_cc import register_stack, shift_image
-from ...utils.processing import nlm_denoising
+from axoid.utils.image import to_npint
+from axoid.utils.ccreg import register_stack, shift_image
+from axoid.utils.processing import nlm_denoising
 
 
 def cv_detect(rgb_stack, h_red=11, h_green=11, sigma_gauss=2,

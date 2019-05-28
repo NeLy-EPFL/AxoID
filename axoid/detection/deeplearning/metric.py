@@ -9,7 +9,7 @@ Created on Tue Nov 27 13:57:06 2018
 
 import torch
 
-from utils_common.metrics import dice_coef, crop_metric
+from axoid.utils.metrics import dice_coef, crop_metric
 
    
 def get_dice_metric(reduction='mean'):

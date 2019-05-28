@@ -17,10 +17,10 @@ import imgaug.augmenters as iaa
 
 import torch
 
-from utils_data import pad_collate, normalize_range, pad_transform_stack
-from utils_loss import get_BCEWithLogits_loss
-from utils_metric import get_dice_metric
-from utils_test import evaluate_stack
+from .data import pad_collate, normalize_range, pad_transform_stack
+from .loss import get_BCEWithLogits_loss
+from .metric import get_dice_metric
+from .test import evaluate_stack
 
 
 def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,

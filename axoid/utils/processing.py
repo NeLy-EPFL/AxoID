@@ -15,7 +15,7 @@ from skimage.morphology import disk
 import cv2
 
 from .image import to_npint
-from .register_cc import register_stack
+from .ccreg import register_stack
 from .multithreading import run_parallel
 
 def hline(length):

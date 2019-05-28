@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 import torch, torchvision
 
-from utils_common.image import imread_to_float, overlay_preds_targets
+from axoid.utils.image import imread_to_float, overlay_preds_targets
 
 
 def predict(model, dataloader, discard_target=True):
