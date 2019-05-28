@@ -13,7 +13,7 @@ from skimage import io, color, measure
 
 def imread_to_float(filename, scaling=None, return_scaling=False):
     """Return the loaded stack/image from filename, casted to float32 and rescaled."""
-    stack = io.imread(filename)
+    stack = np.asarray(io.imread(filename))
     # If no scaling is precised, use max value of stack
     if scaling is None:
         scaling = stack.max()
