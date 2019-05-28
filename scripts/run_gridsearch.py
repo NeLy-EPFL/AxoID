@@ -7,11 +7,13 @@ Created on Wed Oct 31 16:38:54 2018
 @author: nicolas
 """
 
-import time
+import os, sys, time
 import numpy as np
 
-from utils_common.script import Arguments
-from utils_model import CustomUNet
+# Add parent folder to path in order to access `axoid`
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from axoid.utils.script import Arguments
+from axoid.detection.deeplearning.model import CustomUNet
 import run_train
 
 # Parameters

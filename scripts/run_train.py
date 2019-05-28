@@ -7,7 +7,7 @@ Created on Thu Nov  1 10:45:50 2018
 @author: nicolas
 """
 
-import os, time, shutil
+import os, sys, time, shutil
 import argparse
 import random
 
@@ -19,12 +19,14 @@ import imgaug.augmenters as iaa
 
 import torch
 
-from utils_data import get_all_dataloaders, normalize_range, pad_transform
-from utils_loss import get_BCEWithLogits_loss
-from utils_metric import get_dice_metric, get_crop_dice_metric
-from utils_model import CustomUNet
-from utils_train import train, train_plot
-from utils_test import evaluate
+# Add parent folder to path in order to access `axoid`
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from axoid.detection.deeplearning.data import get_all_dataloaders, normalize_range, pad_transform
+from axoid.detection.deeplearning.loss import get_BCEWithLogits_loss
+from axoid.detection.deeplearning.metric import get_dice_metric, get_crop_dice_metric
+from axoid.detection.deeplearning.model import CustomUNet
+from axoid.detection.deeplearning.train import train, train_plot
+from axoid.detection.deeplearning.test import evaluate
 
 def main(args, model=None):
     """Main function of the run_train script, can be used as is with correct arguments (and optional model)."""

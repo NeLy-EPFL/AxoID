@@ -7,15 +7,17 @@ Created on Mon Dec 10 14:50:39 2018
 @author: nicolas
 """    
 
-import os, warnings, time
+import os, sys, warnings, time
 import argparse
 import numpy as np
 from skimage import io, filters
 from skimage.morphology import disk
 
-from cv_detector import cv_detect
-from utils_common.image import imread_to_float, to_npint
-from utils_common.metrics import dice_coef, crop_metric
+# Add parent folder to path in order to access `axoid`
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from axoid.detection.cv.detector import cv_detect 
+from axoid.utils.image import imread_to_float, to_npint
+from axoid.utils.metrics import dice_coef, crop_metric
 
 
 def main(args, thresholding_fn, registration, selem, datadir=None):

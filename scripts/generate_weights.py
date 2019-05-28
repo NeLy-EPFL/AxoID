@@ -11,12 +11,14 @@ Created on Wed Feb 20 16:57:32 2019
 @author: nicolas
 """
 
-import os, warnings, argparse
+import os, sys, warnings, argparse
 import numpy as np
 from skimage import io
 
-from utils_common.image import imread_to_float, to_npint
-from utils_data import compute_weights
+# Add parent folder to path in order to access `axoid`
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from axoid.utils.image import imread_to_float, to_npint
+from axoid.detection.deeplearning.data import compute_weights
 
 def main(args):
     if args.data_dir is None:
