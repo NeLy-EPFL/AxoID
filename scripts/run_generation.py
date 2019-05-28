@@ -4,9 +4,6 @@
 Script to generate the synthetic dataset for the training.
 See synthetic_generation.ipynb for more details.
 
-/!\ There are a lot of hard coded numbers. These were empirically tuned so that
-the synthetic data looks like real data.
-
 Created on Thu Nov 22 10:01:56 2018
 
 @author: nicolas
@@ -26,11 +23,12 @@ from axoid.detection.synthetic.generation import synthetic_stack
 
 if __name__ == "__main__":
     ## Parameters and constants (shape and n_neurons are below)
-    n_stacks = 40
-    n_images = 200
+    n_stacks = 4
+    n_images = 20
     
     date = time.strftime("%y%m%d", time.localtime())
-    synth_dir = "/data/talabot/datasets/datasets_190509/synthetic_%s/" % date
+#    synth_dir = "/data/talabot/datasets/datasets_190509/synthetic_%s/" % date
+    synth_dir = "/home/user/talabot/workdir/dataset/synthetic_%s/" % date
     
     start = time.time()
     for i in range(n_stacks):
@@ -75,7 +73,7 @@ if __name__ == "__main__":
     
     # Launch the mask generation over the newly created synthetic dataset
     print("Launching weight generation script...")
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    dir_path = os.path.dirname(__file__)
     os.system("python %s --data_dir %s --separation_border" % \
-              (os.path.join(dir_path, "..", "deep_learning", "generate_weights.py"),
+              (os.path.join(dir_path, "..", "scripts", "generate_weights.py"),
                synth_dir))

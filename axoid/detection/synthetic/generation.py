@@ -11,19 +11,18 @@ Created on Thu Nov 22 10:01:56 2018
 @author: nicolas
 """
 
-import os, time, pickle
+import os, pickle
 import warnings
 import math
 
 import numpy as np
 import matplotlib.pyplot as plt
-from skimage import io, draw, exposure, measure
+from skimage import draw, exposure, measure
 import skimage.morphology as morph
 from scipy.stats import multivariate_normal
 from scipy import ndimage as ndi
 from scipy import signal
 
-from axoid.utils.image import to_npint
 from axoid.utils.processing import flood_fill
 
 
@@ -265,7 +264,7 @@ def reduce_with_border(wrp_seg, return_label):
             dist_label.append(wrp_seg[j].max())
         dist = np.array(dist)
 
-        local_maxi = np.zeros(shape, dtype=np.uint8)
+        local_maxi = np.zeros(dist[0].shape, dtype=np.uint8)
         for j in range(dist.shape[0]):
             r,c = np.unravel_index(np.argmax(dist[j], axis=None), dist[j].shape)
             local_maxi[r,c] = dist_label[j]

@@ -1,4 +1,4 @@
-# NOT UP-TO-DATE
+# README NOT UP-TO-DATE
 
 # ROI detection and tracking
 Python code for automatic Regions Of Interest detection and tracking.  

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Script to detect ROI on experiments in a given folder.
+/!\ DEPRECATED: old and not up-to-date
+Script to detect ROI on experiments in a given folder, using the CV detector.
 Created on Mon Dec 10 14:50:39 2018
 
 @author: nicolas
@@ -34,7 +35,7 @@ def main(args, thresholding_fn, registration, selem, datadir=None):
         
     losses_dice = []
     losses_diC = []
-    losses_dice_mask = []
+#    losses_dice_mask = []
     image_counter = 0
     # Loop over stacks
     data_dirs = sorted(os.listdir(datadir))
@@ -44,16 +45,18 @@ def main(args, thresholding_fn, registration, selem, datadir=None):
         # Load stacks
         rgb_stack = imread_to_float(os.path.join(datadir, subdir, "RGB.tif"))
         true_seg = imread_to_float(os.path.join(datadir, subdir, "seg_ROI.tif"))
-        try:
-            mask_stack = imread_to_float(os.path.join(datadir, subdir, "mask.tif"))
-        except FileNotFoundError:
-            mask_stack = np.zeros_like(true_seg)
+#        try:
+#            mask_stack = imread_to_float(os.path.join(datadir, subdir, "mask.tif"))
+#        except FileNotFoundError:
+#            mask_stack = np.zeros_like(true_seg)
         
         # Compute results
-        predictions = cv_detect(rgb_stack, thresholding_fn, registration, selem)
+        predictions = cv_detect(rgb_stack, thresholding_fn=thresholding_fn,
+                                registration=registration, selem=selem)
         
         # Save results and disable warnings about low contrast
         if args.save:
+            print("Supposedly save results at", os.path.join(args.result_dir, subdir))
             os.makedirs(os.path.join(args.result_dir, subdir), exist_ok=True)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -62,19 +65,19 @@ def main(args, thresholding_fn, registration, selem, datadir=None):
         ## Compute losses
         losses_dice.append(dice_coef(predictions, true_seg, reduction='sum'))
         losses_diC.append(crop_metric(dice_coef, predictions, true_seg, scale=scale_dice, reduction='sum'))
-        losses_dice_mask.append(dice_coef(predictions, true_seg, 
-                                          masks=1 - mask_stack, reduction='sum'))
+#        losses_dice_mask.append(dice_coef(predictions, true_seg, 
+#                                          masks=1 - mask_stack, reduction='sum'))
         
         image_counter += len(true_seg)
     
     # Compute final losses, and print them
     loss_dice = np.sum(losses_dice) / image_counter
     loss_diC = np.sum(losses_diC) / image_counter
-    loss_dice_mask = np.sum(losses_dice_mask) / image_counter
+#    loss_dice_mask = np.sum(losses_dice_mask) / image_counter
     print("Losses:")
     print("Average Dice coefficient: {:.3f}".format(loss_dice))
     print("Average Crop Dice coef.:  {:.3f}".format(loss_diC))
-    print("Average Dice coef. with masks: {:.3f}".format(loss_dice_mask))
+#    print("Average Dice coef. with masks: {:.3f}".format(loss_dice_mask))
     
     # Display script duration if applicable
     if args.timeit:
@@ -85,6 +88,13 @@ def main(args, thresholding_fn, registration, selem, datadir=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Detect ROI with computer vision in the data.")
+    parser.add_argument(
+            '--data_dir', 
+            type=str,
+            default="/data/talabot/pdm/dataset/", 
+            help="name of the directory where the datasets are"
+            " (default = /data/talabot/pdm/dataset/)"
+    )
     parser.add_argument(
             '--result_dir', 
             type=str,
@@ -109,8 +119,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     
+    result_dir = args.result_dir
     for phase in ["train", "validation", "test"]:
-        args.result_dir = os.path.join("results_CV/", phase)
+        args.result_dir = os.path.join(result_dir, phase)
         print("\nProcessing %s set:" % phase)
         main(args, filters.threshold_otsu, registration=False, selem=disk(1), 
-             datadir=os.path.join("/data/talabot/pdm/dataset/", phase))
+             datadir=os.path.join(args.data_dir, phase))

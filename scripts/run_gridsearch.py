@@ -17,7 +17,7 @@ from axoid.detection.deeplearning.model import CustomUNet
 import run_train
 
 # Parameters
-n_epochs = 10
+n_epochs = 1
 batch_sizes = [8, 16, 32]
 learning_rates = [1e-4, 5e-4, 1e-3]
 out1_channels = [8, 16]
@@ -28,14 +28,14 @@ def main():
     
     # Arguments for run_train
     args = Arguments(
-            batch_size = 32,
+            batch_size = 16,
             crop_dice = False,
             data_aug = False,
-            data_dir = "/data/talabot/datasets/datasets_190401/",
+            data_dir = "/data/talabot/datasets/datasets_190510/",
             epochs = n_epochs,
             eval_test = False,
             input_channels = "RG",
-            learning_rate = 0.001,
+            learning_rate = 0.0005,
             model_dir = None,
             no_gpu = False,
             pixel_weight = False,

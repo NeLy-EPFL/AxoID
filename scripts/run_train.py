@@ -118,7 +118,8 @@ def main(args, model=None):
         if args.model_dir is not None:
             # Save the "architecture" of the model by copy/pasting the class definition file
             os.makedirs(os.path.join(args.model_dir), exist_ok=True)
-            shutil.copy("utils_model.py", os.path.join(args.model_dir, "utils_model_save.py"))
+            shutil.copy("../axoid/detection/deeplearning/model.py", 
+                        os.path.join(args.model_dir, "utils_model_save.py"))
     # Make sure the given model is on the correct device
     else: 
         model.to(device)
@@ -190,13 +191,13 @@ if __name__ == "__main__":
     parser.add_argument(
             '--batch_size', 
             type=int,
-            default=32, 
-            help="batch_size for the dataloaders (default=32)"
+            default=16, 
+            help="batch_size for the dataloaders (default=16)"
     )
     parser.add_argument(
             '--crop_dice', 
             action="store_true",
-            help="enable the use of the cropped dice coefficient as performance metric"
+            help="enable the use of the cropped dice coefficient as a performance metric"
     )
     parser.add_argument(
             '--data_aug', 
@@ -206,19 +207,21 @@ if __name__ == "__main__":
     parser.add_argument(
             '--data_dir',
             type=str,
-            default="/data/talabot/pdm/dataset/", 
-            help="directory to the train, validation, and test data. It should contain "
-            "train/, validation/, and test/ subdirs (test/ is not mandatory, see --eval_test). "
+            default="/data/talabot/datasets/datasets_190510/", 
+            help="directory to the train, validation, (test), and (synthtetic) data. "
+            "It should contain train/, validation/, test/, and synthetic/ subdirs "
+            "(test/ and synthetic/ are not mandatory, see --eval_test and --synthetic_*). "
             "These should be structured as: "
             "train_dir-->subdirs-->rgb_frames: folder with input images; and "
             "train_dir-->subdirs-->seg_frames: folder with target images; and (optional, see --pixel_weight)"
-            "train_dir-->subdirs-->wgt_frames: folder with weight images (default=/data/talabot/pdm/dataset/)"
+            "train_dir-->subdirs-->wgt_frames: folder with weight images "
+            "(default=/data/talabot/datasets/datasets_190510/)"
     )
     parser.add_argument(
             '--epochs', 
             type=int,
-            default=5, 
-            help="number of epochs (default=5)"
+            default=10, 
+            help="number of epochs (default=10)"
     )
     parser.add_argument(
             '--eval_test', 
@@ -234,8 +237,8 @@ if __name__ == "__main__":
     parser.add_argument(
             '--learning_rate', 
             type=float,
-            default=0.001,
-            help="learning rate for the stochastic gradient descent (default=0.001)"
+            default=0.0005,
+            help="learning rate for the stochastic gradient descent (default=0.0005)"
     )
     parser.add_argument(
             '--model_dir', 
@@ -275,8 +278,8 @@ if __name__ == "__main__":
             '--step_decay', 
             type=int,
             default=None,
-            help="enable the learning rate decay. The learning rate is divided"
-            "by 2 every step_decay epochs."
+            help="number of epochs after which the learning rate is decayed by "
+            "a factor 2. If not set, not decay is used."
     )
     parser.add_argument(
             '--synthetic_data', 
@@ -295,7 +298,7 @@ if __name__ == "__main__":
             '--synthetic_ratio', 
             type=float,
             default=None,
-            help="(requires synthetic_data to be set) ratio of synthetic data "
+            help="(requires --synthetic_data) ratio of synthetic data "
             "vs. real data. If not set, all real and synthetic data are used"
     )
     parser.add_argument(
