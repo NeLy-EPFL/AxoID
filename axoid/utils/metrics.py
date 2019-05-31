@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Module containing useful metric functions for ROI detection.
+Module containing useful metric functions.
 Created on Mon Nov 12 09:37:00 2018
 
 @author: nicolas
@@ -10,6 +10,8 @@ Created on Mon Nov 12 09:37:00 2018
 import numpy as np
 from skimage import measure
 
+
+#%% Metrics for ROI binary detection
 
 def loss_mae(predictions, targets, reduction='mean'):
     """Compute the (Mean) Average Error between predictions and targets.""" 
@@ -95,3 +97,23 @@ def crop_metric(metric_fn, predictions, targets, scale=4.0, reduction='mean'):
         return np.array(metric)
     else:
         raise ValueError("""Unknown reduction method "%s".""" % reduction)
+
+
+#%% Misc. metrics
+
+def gradient_norm(image):
+    """
+    Return the norm of the gradient of the image.
+    
+    Defined as the Frobenius norm of the gradient image, where the gradient is 
+    constructed as the norm of the gradient at each pixel.
+    """
+    if image.ndim != 2:
+        raise ValueError("image should be 2-dimensional (image.ndim=%d)" % image.ndim)
+        
+    # Compute the gradient image
+    grad = np.gradient(image)
+    grad = np.linalg.norm(grad, axis=0)
+    
+    # Return its Frobenius norm
+    return np.linalg.norm(grad, ord='fro')

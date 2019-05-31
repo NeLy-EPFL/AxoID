@@ -49,6 +49,12 @@ def gray2red(image):
     blue = np.zeros_like(image)
     return np.stack([red, green, blue], axis=-1)
 
+def rg2gray(image):
+    """Create a grayscale images with the red and green channel of the image."""
+    # Use weights from contemporary CRT phosphors (see skimage.color.rgb2gray doc)
+    weights = np.array([0.2125, 0.7154, 0.0], image.dtype)
+    return image @ weights / weights.sum()
+
 def overlay_mask(image, mask, opacity=0.25, mask_color=[1.0, 0.0, 0.0], rescale_img=False):
     """Merge the mask as an overlay over the image."""
     mask_color = np.array(mask_color, dtype=np.float32)
