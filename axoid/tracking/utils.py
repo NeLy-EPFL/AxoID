@@ -9,6 +9,7 @@ Created on Mon May  6 11:49:30 2019
 
 import numpy as np
 
+
 def get_rules(image, remove_contradictions=True):
     """Return the row-order rules between the labelled regions as a 2D array."""
     rules = []

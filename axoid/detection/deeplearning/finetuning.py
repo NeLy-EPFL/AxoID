@@ -65,14 +65,16 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
         best_iter = -1
         best_dice = -1
         best_state_dict = None
-        if verbose:
-            print("Initial val_dice = %.6f" % evaluate_stack(
-                    model_ft, x_valid, y_valid, batch_size, 
-                    metrics=metrics, transform=input_transform)["dice"])
         
     # Iterate over the data
     if verbose:
-        print("Iteration (min: %d - max %d): " % (n_iter_min, n_iter_max))
+        print("Iteration (min: %d - max: %d): " % (n_iter_min, n_iter_max))
+        print("{}: dice = {:.6f} - val_dice = {:.6f}".format(
+                0,
+                evaluate_stack(model_ft, x_train, y_train, batch_size,
+                               metrics=metrics, transform=input_transform)["dice"],
+                evaluate_stack(model_ft, x_valid, y_valid, batch_size,
+                               metrics=metrics, transform=input_transform)["dice"]))
     for i in range(n_iter_max):
         # If patience is reached, stop the fine tuning
         if x_valid is not None and i >= n_iter_min and i >= best_iter + patience:
@@ -150,7 +152,7 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
     if x_valid is not None:
         if verbose:
             print("Best model fine tuned in iteration %d." % best_iter)
-            print("Best dice =", best_dice)
+            print("Best val_dice =", best_dice)
         model_ft.load_state_dict(best_state_dict)
     
     # Set the model to evaluation mode and return it
