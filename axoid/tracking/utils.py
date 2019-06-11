@@ -58,6 +58,7 @@ def _verify_frame(rules, label):
     orders = get_rules(label)
     verification = np.array([(rules == order[::-1]).all(1) for order in orders])
     return np.any(verification)
+
 def rules_violated(rules, labels):
     """Verify if the labels violates any rules."""    
     if labels.ndim == 2:

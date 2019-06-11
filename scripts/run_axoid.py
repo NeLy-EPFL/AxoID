@@ -23,7 +23,7 @@ import torch
 
 # Add parent folder to path in order to access `axoid`
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from axoid.detection.clustering import similar_frames, segment_projection
+from axoid.detection.clustering import similar_frames, segment_projection, find_cuts, apply_cuts
 from axoid.detection.deeplearning.model import load_model
 from axoid.detection.deeplearning.data import (compute_weights, normalize_range, 
                                                pad_transform_stack)
@@ -89,7 +89,6 @@ def get_data(args):
     return rgb_input, wrp_input
 
 
-# TODO: save potential "cuts" in seg_annot and return them to use in tracking post-processing
 def detection(args, wrp_input):
     """Detect ROIs and return the binary segmentation."""
     if args.verbose:
@@ -103,14 +102,16 @@ def detection(args, wrp_input):
     # Detect good frames
     indices = similar_frames(wrp_input)
     
-    # Make annotations out of them
+    # Compute the projection of good frames
     annot_projection = wrp_input[indices].mean(0)
     # If not enough frames, process the projection to reduce noise
     if len(indices) < N_ANNOT_MAX:
         annot_projection = filters.gaussian(annot_projection, multichannel=True)
         annot_projection = np.stack([filters.median(to_npint(annot_projection[..., c]))
                                      for c in range(3)], axis=-1) / 255
-    seg_annot = segment_projection(annot_projection, min_area=MIN_AREA, separation_border=False)
+    seg_annot = segment_projection(annot_projection, min_area=MIN_AREA)
+    
+    # Make annotations out of the cluster
     # ratio between train&validation, with a maximum number of frames
     n_train = int(TRAIN_RATIO * min(len(indices), N_ANNOT_MAX))
     n_valid = int((1 - TRAIN_RATIO) * min(len(indices), N_ANNOT_MAX))
@@ -161,10 +162,14 @@ def tracking(args, wrp_input, segmentations, rgb_init, seg_init):
     """Track and return ROI identities."""   
     if args.verbose:
         print("\nTracking axon identities") 
+    
     # Initialize the model
     identities = np.zeros(segmentations.shape, np.uint8)
     model = InternalModel()
     model.initialize(rgb_init, seg_init)
+    
+    # Compute "cuts" of ROIs
+    cuts = find_cuts(rgb_init, model, min_area=MIN_AREA)
     
     # Update the model frame by frame
     if args.verbose and args.timeit:
@@ -189,7 +194,10 @@ def tracking(args, wrp_input, segmentations, rgb_init, seg_init):
     # Error detection and correction
     # TODO
     
-    # Assure axon ids are consecutive numbers starting at 1
+    # Apply "cuts" to model image and all frames
+    model.image, identities = apply_cuts(cuts, model, identities)
+    
+    # Assure axon ids are consecutive integers starting at 1
     new_identities = np.zeros_like(identities)
     ids = np.unique(identities)
     ids = np.delete(ids, np.where(ids == 0))
@@ -219,6 +227,8 @@ def save_results(args, rgb_input, wrp_input, segmentations, rgb_proj, seg_proj,
         io.imsave(os.path.join(outdir, "segmentations.tif"), to_npint(segmentations))
         io.imsave(os.path.join(outdir, "rgb_proj.png"), to_npint(rgb_proj))
         io.imsave(os.path.join(outdir, "seg_proj.png"), to_npint(seg_proj))
+        io.imsave(os.path.join(outdir, "seg_proj_cut.png"), to_npint(
+                segment_projection(rgb_proj, min_area=MIN_AREA, separation_border=True)))
         io.imsave(os.path.join(outdir, "identities.tif"), to_npint(identities))
         io.imsave(os.path.join(outdir, "model.png"), to_npint(model.image))
         

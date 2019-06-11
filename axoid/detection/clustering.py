@@ -18,8 +18,8 @@ from axoid.utils.image import rg2gray
 from axoid.utils.processing import fuse_small_objects
 
 
-def segment_projection(projection, min_area=None, separation_border=True):
-    """Segment the ROIs of the projection image."""
+def segment_projection(projection, min_area=None, separation_border=False):
+    """Segment the ROIs of a projection image."""
     # Binary segmentation by local thersholding
     bin_projection = rg2gray(projection)
     bin_projection = bin_projection > filters.threshold_local(bin_projection, 25, offset=-0.05)
