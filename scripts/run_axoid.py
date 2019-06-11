@@ -23,13 +23,15 @@ import torch
 
 # Add parent folder to path in order to access `axoid`
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from axoid.detection.clustering import similar_frames, segment_projection, find_cuts, apply_cuts
+from axoid.detection.clustering import similar_frames, segment_projection
+from axoid.tracking.cutting import find_cuts, apply_cuts
 from axoid.detection.deeplearning.model import load_model
 from axoid.detection.deeplearning.data import (compute_weights, normalize_range, 
                                                pad_transform_stack)
 from axoid.detection.deeplearning.finetuning import fine_tune
 from axoid.detection.deeplearning.test import predict_stack
 from axoid.tracking.model import InternalModel
+from axoid.tracking.utils import renumber_ids
 from axoid.utils.image import imread_to_float, to_npint
 from axoid.utils.fluorescence import get_fluorophores, compute_fluorescence
 from axoid.utils.ccreg import register_stack
@@ -134,7 +136,7 @@ def detection(args, wrp_input):
             start = time.time()
     model_ft = fine_tune(
             model, rgb_train, seg_train, weights_train, rgb_valid, seg_valid,
-            data_aug=True, n_iter_min=0, n_iter_max=1000, patience=200,
+            data_aug=True, n_iter_min=0, n_iter_max=args.maxiter, patience=200,
             batch_size=BATCH_SIZE, learning_rate=LEARNING_RATE, verbose=args.verbose)
     if args.verbose and args.timeit:
         duration = time.time() - start
@@ -194,27 +196,25 @@ def tracking(args, wrp_input, segmentations, rgb_init, seg_init):
     # Error detection and correction
     # TODO
     
+    # Assure axon ids are consecutive integers starting at 1
+    identities = renumber_ids(model, identities)
+    
     # Apply "cuts" to model image and all frames
     model.image, identities = apply_cuts(cuts, model, identities)
     
-    # Assure axon ids are consecutive integers starting at 1
-    new_identities = np.zeros_like(identities)
-    ids = np.unique(identities)
-    ids = np.delete(ids, np.where(ids == 0))
-    for new_id, old_id in zip(range(1, len(ids) + 1), ids):
-        new_identities[identities == old_id] = new_id
-    
-    return new_identities, model
+    return identities, model
 
 
 # TODO: maybe saving intermediate results at each step will be enough
-def save_results(args, rgb_input, wrp_input, segmentations, rgb_proj, seg_proj,
+def save_results(args, i, rgb_input, wrp_input, segmentations, rgb_proj, seg_proj,
                  identities, model, tdtom, gcamp, dFF, dRR):
     """Save final results."""
     if args.verbose:
         print("Saving results")
     print("Warnings: saving results is currently only implemented for testing!")
     outdir = "/home/user/talabot/workdir/axoid_outputs/"
+    if args.animal_folder:
+        outdir += str(i) + '/'
     
     if os.path.isdir(outdir):
         shutil.rmtree(outdir)
@@ -239,8 +239,7 @@ def save_results(args, rgb_input, wrp_input, segmentations, rgb_proj, seg_proj,
         """Make a plot of the fluorescence traces."""
         ymin = min(0, np.nanmin(traces) - 0.05 * np.abs(np.nanmin(traces)))
         ymax = np.nanmax(traces) * 1.05
-        fig = plt.figure(figsize=(4 * len(traces), 6))
-        plt.suptitle(name)
+        fig = plt.figure(figsize=(6, 3 * len(traces)))
         for i in range(len(traces)):
             ax = plt.subplot(len(traces), 1, i+1)
             plt.title("ROI#%d" % i)
@@ -252,16 +251,18 @@ def save_results(args, rgb_input, wrp_input, segmentations, rgb_proj, seg_proj,
             plt.ylim(ymin, ymax)
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+            if i < len(traces) - 1:
+                ax.spines['bottom'].set_visible(False)
+                ax.get_xaxis().set_visible(False)
         return fig
     fig_tdtom = plot_traces(tdtom, "TdTomato", color="C3")
     fig_gcamp = plot_traces(gcamp, "GCaMP", color="C2")
     fig_dFF = plot_traces(dFF, "$\Delta$F/F")
     fig_dRR = plot_traces(dRR, "$\Delta$R/R")
-    fig_tdtom.savefig(os.path.join(outdir, "ROIs_tdTom.png"))
-    fig_gcamp.savefig(os.path.join(outdir, "ROIs_GC.png"))
-    fig_dFF.savefig(os.path.join(outdir, "ROIs_dFF.png"))
-    fig_dRR.savefig(os.path.join(outdir, "ROIs_dRR.png"))
+    fig_tdtom.savefig(os.path.join(outdir, "ROIs_tdTom.png"), bbox_inches='tight')
+    fig_gcamp.savefig(os.path.join(outdir, "ROIs_GC.png"), bbox_inches='tight')
+    fig_dFF.savefig(os.path.join(outdir, "ROIs_dFF.png"), bbox_inches='tight')
+    fig_dRR.savefig(os.path.join(outdir, "ROIs_dRR.png"), bbox_inches='tight')
 
 
 def main(args):
@@ -275,29 +276,49 @@ def main(args):
     if args.verbose:
         print("AxoID started on " + time.asctime())
     
-    # Load and warp the data
-    rgb_input, wrp_input = get_data(args)
+    # Make a list of the experiment folders to process
+    if args.animal_folder:
+        experiments = [os.path.join(args.experiment, folder) 
+                       for folder in os.listdir(args.experiment)
+                       if os.path.isdir(os.path.join(args.experiment, folder))]
+    else:
+        experiments = [args.experiment]
     
-    # Detect ROIs as a binary segmentation
-    segmentations, rgb_proj, seg_proj = detection(args, wrp_input)
-    
-    # Track identities through frames
-    identities, model = tracking(args, wrp_input, segmentations, rgb_proj, seg_proj)
-    
-    # Extract fluorescence traces as both dF/F and dR/R
-    if args.verbose:
-        print("\nExtracting fluorescence traces")
-        if args.timeit:
-            substart = time.time()
-    len_baseline = int(BIN_S * RATE_HZ + 0.5) # number of frames for baseline computation
-    tdtom, gcamp = get_fluorophores(wrp_input, identities)
-    dFF, dRR = compute_fluorescence(tdtom, gcamp, len_baseline)
-    if args.verbose and args.timeit:
-        print("Fluorescence extraction took %d s." % (time.time() - substart))
-    
-    # Save all results to folder
-    save_results(args, rgb_input, wrp_input, segmentations, rgb_proj, seg_proj,
-                 identities, model, tdtom, gcamp, dFF, dRR)
+    for i, exp in enumerate(experiments):
+        args.experiment = exp
+        if args.verbose and len(experiments) > 1:
+            print("\nProcessing experiment %d/%d: (%s)" % 
+                  (i + 1, len(experiments), exp))
+            if args.timeit:
+                start_exp = time.time()
+        
+        # Load and warp the data
+        rgb_input, wrp_input = get_data(args)
+        
+        # Detect ROIs as a binary segmentation
+        segmentations, rgb_proj, seg_proj = detection(args, wrp_input)
+        
+        # Track identities through frames
+        identities, model = tracking(args, wrp_input, segmentations, rgb_proj, seg_proj)
+        
+        # Extract fluorescence traces as both dF/F and dR/R
+        if args.verbose:
+            print("\nExtracting fluorescence traces")
+            if args.timeit:
+                substart = time.time()
+        len_baseline = int(BIN_S * RATE_HZ + 0.5) # number of frames for baseline computation
+        tdtom, gcamp = get_fluorophores(wrp_input, identities)
+        dFF, dRR = compute_fluorescence(tdtom, gcamp, len_baseline)
+        if args.verbose and args.timeit:
+            print("Fluorescence extraction took %d s." % (time.time() - substart))
+        
+        # Save all results to folder
+        save_results(args, i, rgb_input, wrp_input, segmentations, rgb_proj, seg_proj,
+                     identities, model, tdtom, gcamp, dFF, dRR)
+        if args.verbose and args.timeit and len(experiments) > 1:
+            duration = time.time() - start_exp
+            print("\Processing the experiment took %d min %d s." % 
+                  (duration // 60, duration % 60))
     
     if args.timeit:
         duration = time.time() - start
@@ -316,6 +337,13 @@ if __name__ == "__main__":
             help="path to the experiment folder (excluding \"2Pimg/\")"
     )
     parser.add_argument(
+            '--animal_folder',
+            action="store_true",
+            help="if this is used, the passed folder name is assumed to be an "
+            "animal folder regrouping multiple experiment folders in it, AxoID "
+            "will then be applied sequentially to each"
+    )
+    parser.add_argument(
             '--crosscorrelation',
             action="store_true",
             help="use cross-correlation registration instead of optic flow "
@@ -327,6 +355,13 @@ if __name__ == "__main__":
             help="force initial optic flow warping of the raw data, even if "
             "\"warped_RGB.tif\" already exists (not necessary if there is no "
             "warped data in the experiment folder)"
+    )
+    parser.add_argument(
+            '--maxiter',
+            type=int,
+            default=1000,
+            help="maximum number of iteration for the network fine tuning "
+            "(default = 1000)"
     )
     parser.add_argument(
             '--no_gpu', 

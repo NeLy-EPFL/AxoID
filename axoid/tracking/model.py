@@ -168,8 +168,8 @@ class InternalModel():
         # Draw the model
         self._draw()
     
-    def match_inner_cost(self, x_roi, x_model, area_roi, area_model, frame_height):
-        """Construct the inner cost matrix for assignments."""
+    def _inner_cost(self, x_roi, x_model, area_roi, area_model, frame_height):
+        """Compute the inner cost matrix for assignments."""
         # Distance cost
         cost_dist = cdist(x_roi, x_model) / self.NORM_DIST
         # Angle cost
@@ -186,16 +186,9 @@ class InternalModel():
         
         return self.W_DIST * cost_dist + self.W_ANGLE * cost_angle + self.W_AREA * cost_area
     
-    def match_frame(self, frame, seg, time_idx=None, debug=False, return_debug=False):
-        """Match axons of the given frame to the model's."""
-        # If no ROI, do nothing
-        if seg.sum() == 0:
-            return np.zeros(seg.shape, np.uint8)
-        if debug:
-            id_cmap = matplotlib.cm.get_cmap('viridis')
-            id_cmap.set_under([0,0,0])
-        
-        # Extract ROIs and compute local center of mass
+    def outer_cost(self, frame, seg, debug=False):
+        """Compute the outer cost matrix for assignments."""
+        # Extract ROIs
         labels = measure.label(seg, connectivity=1)
         regions = measure.regionprops(labels, coordinates='rc')
         centroids = np.array([region.centroid for region in regions])
@@ -223,9 +216,9 @@ class InternalModel():
                     area_model = np.delete(model_areas, k)
                     
                     # Hungarian assignment method
-                    in_cost_matrix = self.match_inner_cost(x_roi, x_model, 
-                                                           area_roi, area_model, 
-                                                           seg.shape[0])
+                    in_cost_matrix = self._inner_cost(x_roi, x_model, 
+                                                     area_roi, area_model, 
+                                                     seg.shape[0])
                     in_th_dummy = 1.1 * max(self.TH_DUMMY, in_cost_matrix.min())
                     in_cost_matrix = np.concatenate([in_cost_matrix, 
                           np.ones((len(regions) - 1,) * 2) * in_th_dummy], axis=1)
@@ -238,21 +231,30 @@ class InternalModel():
                     cost = np.append(in_cost_matrix[row_ids[idx], col_ids[idx]],
                                      [in_th_dummy] * max(0, min(len(regions), len(self.axons)) - 1 - len(idx)))
                     cost_matrix[i, k] += np.mean(cost)
-                    
-#                    if debug and i == 4 and k == 2:
-#                        print("Distance", self.W_DIST * cost_dist, "Angle", self.W_ANGLE * cost_angle,
-#                              "Area", self.W_AREA * cost_area,
-#                              "Total cost", in_cost_matrix[:, :len(self.axons) - 1], sep="\n")
         
         # Add "dummy" axons in the cost matrix for axons not in the model
         cost_matrix = np.concatenate([cost_matrix, 
               np.ones((len(regions), len(regions))) * max(self.TH_DUMMY, 1.1 * cost_matrix.min())], axis=1)
-        
+                
+        return cost_matrix
+    
+    def match_frame(self, frame, seg, time_idx=None, debug=False, return_debug=False):
+        """Match axons of the given frame to the model's."""
+        # If no ROI, do nothing
+        if seg.sum() == 0:
+            return np.zeros(seg.shape, np.uint8)
+        if debug:
+            id_cmap = matplotlib.cm.get_cmap('viridis')
+            id_cmap.set_under([0,0,0])
+                
         # Assign identities through the hungarian method
+        cost_matrix = self.outer_cost(frame, seg, debug=debug)
         row_ids, col_ids = linear_sum_assignment(cost_matrix)
         
         # Build a dictionary mapping ROI labels to axon IDs
         ids = dict()
+        labels = measure.label(seg, connectivity=1)
+        regions = measure.regionprops(labels, coordinates='rc')
         for i, region in enumerate(regions):
             c_idx = col_ids[np.where(row_ids == i)[0]]
             if i in row_ids and c_idx < len(self.axons):
@@ -278,6 +280,7 @@ class InternalModel():
             plt.show()
         if return_debug:
             return cost_matrix, row_ids, col_ids
+        
         # Make identity image, and return it
         identities = np.zeros(seg.shape, np.uint8)
         for region in regions:

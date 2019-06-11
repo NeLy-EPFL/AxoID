@@ -66,4 +66,20 @@ def rules_violated(rules, labels):
     else:   
         return np.array([_verify_frame(rules, label) for label in labels])
     
+
+def renumber_ids(model, identities=None):
+    """Renumber axons with consecutive integers starting at 1."""
+    # Change numbering in model and keep track of it for identities
+    new_ids = dict()
+    for i, axon in enumerate(model.axons):
+        new_ids.update({axon.id: i + 1})
+        axon.id = i + 1
+    # Redraw the model
+    model._draw()
     
+    # Change identities if applicable
+    if identities is not None:
+        new_identities = np.zeros_like(identities)
+        for old_id, new_id in new_ids.items():
+            new_identities[identities == old_id] = new_id
+        return new_identities

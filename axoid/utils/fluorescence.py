@@ -93,10 +93,13 @@ def compute_fluorescence(tdtom, gcamp, len_baseline):
         F_0 = []
         R_0 = []
         for i in range(max(0, dFF.shape[1] - len_baseline)):
-            F_0.append(np.nanmean(F_t[i: i + len_baseline]))
-            R_0.append(np.nanmean(R_t[i: i + len_baseline]))
-        F_0 = min(F_0)
-        R_0 = min(R_0)
+            # Ignore empty slice warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                F_0.append(np.nanmean(F_t[i: i + len_baseline]))
+                R_0.append(np.nanmean(R_t[i: i + len_baseline]))
+        F_0 = np.nanmin(F_0)
+        R_0 = np.nanmin(R_0)
         
         dFF[n] = (F_t - F_0) / F_0 * 100
         dRR[n] = (R_t - R_0) / R_0 * 100
