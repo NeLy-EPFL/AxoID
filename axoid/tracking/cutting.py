@@ -3,10 +3,14 @@
 """
 Module with function useful for "cuts" of ROIs. Cuts are a linear separation of 
 an ROI into 2 ROI, effectively making 2 axons out of it.
+It assumes ROIs elongated vertically (or the "top" of the ellipse might appear 
+inverted in different frames if the ellipse is horizontal).
 Created on Tue Jun 11 14:51:46 2019
 
 @author: nicolas
 """
+
+from copy import copy
 
 import numpy as np
 from skimage import measure
@@ -39,6 +43,68 @@ def fit_line(image):
         n *= -1
     
     return n, d
+
+
+def norm_to_ellipse(n, d, roi_img):
+    """Normalize the line parameters to an ellipse fitted on the ROI."""
+    new_n = n.copy()
+    new_d = copy(d)
+    
+    # Fit an ellipse to the ROI
+    _, contours, _ = cv2.findContours(roi_img.astype(np.uint8),
+                                      cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    ellipse = cv2.fitEllipse(contours[0])
+    center = np.array([ellipse[0][1], ellipse[0][0]])
+    axes = np.array([ellipse[1][1], ellipse[1][0]]) / 2
+    rotation = - ellipse[2] * np.pi / 180
+    if -np.pi < rotation < -np.pi/2: # correct angle
+        rotation += np.pi
+    
+    # Normalize line parameters w.r.t. the ellipse
+    # Centering
+    new_d -= np.dot(center, new_n)
+    # Rotation (note that we take the negative angle)
+    rot_matrix = np.array([[np.cos(rotation), np.sin(rotation)], 
+                           [-np.sin(rotation), np.cos(rotation)]])
+    new_n = rot_matrix @ new_n
+    # Scaling
+    new_n /= axes[::-1]
+    new_d /= axes[0] * axes[1]
+    new_d /= np.linalg.norm(new_n)
+    new_n /= np.linalg.norm(new_n)
+    
+    return new_n, new_d
+
+def fit_to_ellipse(n, d, roi_img):
+    """Transform the normalized line parameters to an ellipse fitted on the ROI."""
+    new_n = n.copy()
+    new_d = copy(d)
+    
+    # Fit an ellipse to the ROI
+    _, contours, _ = cv2.findContours(roi_img.astype(np.uint8),
+                                      cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    ellipse = cv2.fitEllipse(contours[0])
+    center = np.array([ellipse[0][1], ellipse[0][0]])
+    axes = np.array([ellipse[1][1], ellipse[1][0]]) / 2
+    rotation =  - ellipse[2] * np.pi / 180
+    if -np.pi < rotation < -np.pi/2: # correct angle
+        rotation += np.pi
+    
+    # Transform line parameters w.r.t. the ellipse
+    # Scaling
+    new_n *= axes[::-1]
+    new_d *= axes[0] * axes[1]
+    new_d /= np.linalg.norm(new_n)
+    new_n /= np.linalg.norm(new_n)
+    # Rotation
+    rot_matrix = np.array([[np.cos(rotation), -np.sin(rotation)], 
+                           [np.sin(rotation), np.cos(rotation)]])
+    new_n = rot_matrix @ new_n
+    # Centering
+    new_d += np.dot(center, new_n)
+    
+    return new_n, new_d
+
 
 def find_cuts(projection, model, min_area=None, ellipse_normalization=True):
     """Return a dictionary mapping axon identity to a list of cuts (as parametrized lines)."""
@@ -111,70 +177,9 @@ def apply_cuts(cuts, model, identities):
         for k in range(len(identities)):
             roi_img = identities[k] == axon.id
             if np.sum(roi_img) == 0:
-                continue
+                continue            
             for j, (n, d) in enumerate(cuts[axon.id]):
                 new_coords = get_cut_pixels(n, d, roi_img)
                 new_identities[k, new_coords[:,0], new_coords[:,1]] = new_ids[axon.id][j]
     
     return new_model_image, new_identities
-
-
-def norm_to_ellipse(n, d, roi_img):
-    """Normalize the line parameters to an ellipse fitted on the ROI."""
-    new_n = n.copy()
-    new_d = d.copy()
-    
-    # Fit an ellipse to the ROI
-    _, contours, _ = cv2.findContours(roi_img.astype(np.uint8),
-                                      cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    ellipse = cv2.fitEllipse(contours[0])
-    center = np.array([ellipse[0][1], ellipse[0][0]])
-    axes = np.array([ellipse[1][1], ellipse[1][0]]) / 2
-    rotation = ellipse[2] * np.pi / 180
-    if np.pi / 2 < rotation < np.pi: # correct angle
-        rotation -= np.pi
-    
-    # Normalize line parameters w.r.t. the ellipse
-    # Centering
-    new_d -= np.dot(center, new_n)
-    # Rotation (note that we take the negative angle)
-    rot_matrix = np.array([[np.cos(rotation), np.sin(rotation)], 
-                           [-np.sin(rotation), np.cos(rotation)]])
-    new_n = rot_matrix @ new_n
-    # Scaling
-    new_n /= axes[::-1]
-    new_d /= axes[0] * axes[1]
-    new_d /= np.linalg.norm(new_n)
-    new_n /= np.linalg.norm(new_n)
-    
-    return new_n, new_d
-
-def fit_to_ellipse(n, d, roi_img):
-    """Transform the normalized line parameters to an ellipse fitted on the ROI."""
-    new_n = n.copy()
-    new_d = d.copy()
-    
-    # Fit an ellipse to the ROI
-    _, contours, _ = cv2.findContours(roi_img.astype(np.uint8),
-                                      cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    ellipse = cv2.fitEllipse(contours[0])
-    center = np.array([ellipse[0][1], ellipse[0][0]])
-    axes = np.array([ellipse[1][1], ellipse[1][0]]) / 2
-    rotation = ellipse[2] * np.pi / 180
-    if np.pi / 2 < rotation < np.pi: # correct angle
-        rotation -= np.pi
-    
-    # Transform line parameters w.r.t. the ellipse
-    # Scaling
-    new_n *= axes[::-1]
-    new_d *= axes[0] * axes[1]
-    new_d /= np.linalg.norm(new_n)
-    new_n /= np.linalg.norm(new_n)
-    # Rotation
-    rot_matrix = np.array([[np.cos(rotation), -np.sin(rotation)], 
-                           [np.sin(rotation), np.cos(rotation)]])
-    new_n = rot_matrix @ new_n
-    # Centering
-    new_d += np.dot(center, new_n)
-    
-    return new_n, new_d

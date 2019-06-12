@@ -28,20 +28,20 @@ def segment_projection(projection, min_area=None, separation_border=False):
         small_rois = np.logical_xor(bin_projection, morphology.remove_small_objects(bin_projection, min_area))
         bin_projection = np.logical_xor(bin_projection, small_rois)
 
-    if separation_border:
-        # Peaks detection
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", FutureWarning)
-            peaks = morphology.h_maxima(rg2gray(projection), 0.05)
+    # Peaks detection
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        peaks = morphology.h_maxima(rg2gray(projection), 0.05)
 #            peaks = segmentation.clear_border(peaks) # remove peaks at the border
-            peaks *= bin_projection # remove peaks outside of segmentation
+        peaks *= bin_projection # remove peaks outside of segmentation
 
-        # Watershed to separate touching axons
-        markers = measure.label(peaks, connectivity=1)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", FutureWarning)
-            watershed = morphology.watershed(-rg2gray(projection), markers, mask=bin_projection)
+    # Watershed to separate touching axons
+    markers = measure.label(peaks, connectivity=1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        watershed = morphology.watershed(-rg2gray(projection), markers, mask=bin_projection)
 
+    if separation_border:
         if min_area is not None:
             # Fuse touching small areas
             post_fusion = fuse_small_objects(watershed, min_area)
@@ -57,7 +57,7 @@ def segment_projection(projection, min_area=None, separation_border=False):
         # Convert to boolean
         seg_projection = sep_labels.astype(np.bool)
     else:
-        seg_projection = bin_projection
+        seg_projection = watershed.astype(np.bool)
     
     return seg_projection
 

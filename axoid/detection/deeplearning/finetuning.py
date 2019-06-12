@@ -41,8 +41,11 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
                 
     # Optional data augmentation
     if data_aug:
-        aug_seq = iaa.Affine(scale={"x": (0.95, 1.05), "y": (0.95, 1.05)},
-                             rotate=(0, 5), order=0)
+        aug_seq = iaa.Affine(scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
+                             rotate=(-10, 10),
+                             translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
+                             shear=(-5, 5),
+                             order=0)
     
     # Compute class weights (on train data)
     pos_count = (y_train == 1).sum()
