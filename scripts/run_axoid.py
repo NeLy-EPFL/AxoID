@@ -237,8 +237,8 @@ def save_results(args, i, rgb_input, wrp_input, segmentations, rgb_proj, seg_pro
     
     def plot_traces(traces, name, color="C2"):
         """Make a plot of the fluorescence traces."""
-        ymin = min(0, np.nanmin(traces) - 0.05 * np.abs(np.nanmin(traces)))
-        ymax = np.nanmax(traces) * 1.05
+        ymin = min(0, np.nanmin(traces[:, 1:]) - 0.05 * np.abs(np.nanmin(traces[:, 1:])))
+        ymax = np.nanmax(traces[:, 1:]) * 1.05
         fig = plt.figure(figsize=(6, 3 * len(traces)))
         for i in range(len(traces)):
             ax = plt.subplot(len(traces), 1, i+1)
@@ -361,7 +361,7 @@ if __name__ == "__main__":
             type=int,
             default=1000,
             help="maximum number of iteration for the network fine tuning "
-            "(default = 1000)"
+            "(default=1000)"
     )
     parser.add_argument(
             '--no_gpu', 

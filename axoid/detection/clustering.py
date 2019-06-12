@@ -11,7 +11,7 @@ Created on Thu Jun  6 11:04:39 2019
 import warnings
 
 import numpy as np
-from skimage import filters, measure, morphology, segmentation
+from skimage import filters, measure, morphology
 from sklearn.cluster import OPTICS
 
 from axoid.utils.image import rg2gray
@@ -62,19 +62,20 @@ def segment_projection(projection, min_area=None, separation_border=False):
     return seg_projection
 
 
-def crosscorr_matrix(stack, normalize=True, discard_blue=True, keep_diag=False):
+def crosscorr_matrix(stack, normalize=True, only_tdtom=True, keep_diag=False):
     """Return the cross-correlation matrix of the stack images."""
-    # Normalize the images
+    # Normalize the images and discard last channel (blue)
     if normalize:
         images = (stack - stack.mean((1,2), keepdims=True)) / stack.std((1,2), keepdims=True)
     else:
         images = stack.copy()
+    images = images[..., :2]
     
-    # Set blue to 0 to avoid counting multiple times GCaMP channel
+    # Set GCaMP to 0 in order to only consider tdTomato signal
     # Following is faster with this rather than simply discarding the last channel,
     # I don't know why...
-    if discard_blue:
-        images[..., 2] = 0
+    if only_tdtom:
+        images[..., 1] = 0
        
     # Flatten each image into a vector, and then simply do a matrix 
     flat_images = images.reshape((len(images), -1))
