@@ -18,7 +18,8 @@ import random
 
 import numpy as np
 import matplotlib.pyplot as plt
-from skimage import filters, io, morphology
+from scipy import stats
+from skimage import filters, io, measure, morphology
 import torch
 
 # Add parent folder to path in order to access `axoid`
@@ -38,6 +39,8 @@ from axoid.utils.ccreg import register_stack
 
 
 ## Constants
+# Cross-correlation registration
+REF_NUM = 1            # Take second frame as reference as first one is often bad
 # Deep learning
 LEARNING_RATE = 0.0005
 BATCH_SIZE = 16
@@ -58,28 +61,18 @@ def get_data(args):
     if args.verbose:
         print("\nGetting input data")
     rgb_path = os.path.join(args.experiment, "2Pimg", "RGB.tif")
+    ccreg_path = os.path.join(args.experiment, "2Pimg", "ccreg_RGB.tif")
     wrp_path = os.path.join(args.experiment, "2Pimg", "warped_RGB.tif")
     
     rgb_input = imread_to_float(rgb_path)
-    
-    if args.crosscorrelation:
-        if args.force_warp:
-            raise RuntimeError("Cannot use both --crosscorrelation and --force_warp")
-        if args.verbose:
-            print("Registering input data using cross-correlation")
-            if args.timeit:
-                start = time.time()
-        wrp_input = register_stack(rgb_input, ref_num=1, channels=[0,1])
-        if args.verbose and args.timeit:
-            print("Registration took %d s." % (time.time() - start))
     # If warping is not enforced, look for existing warped data
-    elif not args.force_warp and os.path.isfile(wrp_path):
+    if not args.force_warp and os.path.isfile(wrp_path):
         if args.verbose:
             print("Warped data found, loading it")
         wrp_input = imread_to_float(wrp_path)
     else:
         if args.verbose:
-            print("Starting Optic Flow Warping of input data")
+            print("Starting optic flow warping of input data")
             if args.timeit:
                 start = time.time()
         raise NotImplementedError("call to optic flow warping is not enabled yet")
@@ -88,10 +81,31 @@ def get_data(args):
             duration = time.time() - start
             print("Optic Flow Warping took %d min %d s." % (duration // 60, duration % 60))
     
-    return rgb_input, wrp_input
+    # If cc-registration is not enforced, look for existing warped data
+    if not args.force_ccreg and os.path.isfile(ccreg_path):
+        if args.verbose:
+            print("CC registered data found, loading it")
+        ccreg_input = imread_to_float(ccreg_path)
+    else:
+        if args.verbose:
+            print("Starting cross-correlation registration of input data")
+            if args.timeit:
+                start = time.time()
+        ccreg_input = register_stack(rgb_input, ref_num=REF_NUM, channels=[0,1])
+        if args.verbose and args.timeit:
+            print("CC registration took %d s." % (time.time() - start))
+    
+    return rgb_input, ccreg_input, wrp_input
 
 
-def detection(args, wrp_input):
+def _smooth_frame(frame):
+    """Return the frame after gaussian smoothing and median filtering."""
+    out = filters.gaussian(frame, multichannel=True)
+    out = np.stack([filters.median(to_npint(out[..., c]))
+                    for c in range(3)], axis=-1) / 255
+    return out
+
+def detection(args, input_data, finetuning):
     """Detect ROIs and return the binary segmentation."""
     if args.verbose:
         print("\nDetection of ROIs")
@@ -101,66 +115,93 @@ def detection(args, wrp_input):
         print("PyTorch device:", device)
     model_name = "190510_aug_synth"
     
-    # Detect good frames
-    indices = similar_frames(wrp_input)
-    
-    # Compute the projection of good frames
-    annot_projection = wrp_input[indices].mean(0)
-    # If not enough frames, process the projection to reduce noise
-    if len(indices) < N_ANNOT_MAX:
-        annot_projection = filters.gaussian(annot_projection, multichannel=True)
-        annot_projection = np.stack([filters.median(to_npint(annot_projection[..., c]))
-                                     for c in range(3)], axis=-1) / 255
-    seg_annot = segment_projection(annot_projection, min_area=MIN_AREA)
-    
-    # Make annotations out of the cluster
-    # ratio between train&validation, with a maximum number of frames
-    n_train = int(TRAIN_RATIO * min(len(indices), N_ANNOT_MAX))
-    n_valid = int((1 - TRAIN_RATIO) * min(len(indices), N_ANNOT_MAX))
-    rgb_train = wrp_input[indices[:n_train]]
-    rgb_valid = wrp_input[indices[n_train: n_train + n_valid]]
-    seg_train = np.array([seg_annot] * len(rgb_train), rgb_train.dtype)
-    seg_valid = np.array([seg_annot] * len(rgb_valid), rgb_train.dtype)
-    weights_train = compute_weights(seg_train, contour=False, separation=True)
-    
     # Load initial model
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
                              "..", "data", "models", model_name)
     model = load_model(model_dir, input_channels="RG", u_depth=U_DEPTH, 
                        out1_channels=OUT1_CHANNELS, device=device)
     
-    # Fine tunes on annotations
-    if args.verbose:
-        print("Fine tuning of network:")
-        if args.timeit:
-            start = time.time()
-    model_ft = fine_tune(
-            model, rgb_train, seg_train, weights_train, rgb_valid, seg_valid,
-            data_aug=True, n_iter_min=0, n_iter_max=args.maxiter, patience=200,
-            batch_size=BATCH_SIZE, learning_rate=LEARNING_RATE, verbose=args.verbose)
-    if args.verbose and args.timeit:
-        duration = time.time() - start
-        print("Fine tuning took %d min %d s." % (duration // 60, duration % 60))
+    if finetuning:
+        # Detect good frames
+        indices = similar_frames(input_data)
+        
+        # Compute the projection of good frames
+        annot_projection = input_data[indices].mean(0)
+        # If not enough frames, process the projection to reduce noise
+        if len(indices) < N_ANNOT_MAX:
+            annot_projection = _smooth_frame(annot_projection)
+        seg_annot = segment_projection(annot_projection, min_area=MIN_AREA)
+        
+        # Make annotations out of the cluster
+        # ratio between train&validation, with a maximum number of frames
+        n_train = int(TRAIN_RATIO * min(len(indices), N_ANNOT_MAX))
+        n_valid = int((1 - TRAIN_RATIO) * min(len(indices), N_ANNOT_MAX))
+        rgb_train = input_data[indices[:n_train]]
+        rgb_valid = input_data[indices[n_train: n_train + n_valid]]
+        seg_train = np.array([seg_annot] * len(rgb_train), rgb_train.dtype)
+        seg_valid = np.array([seg_annot] * len(rgb_valid), rgb_train.dtype)
+        weights_train = compute_weights(seg_train, contour=False, separation=True)
+        
+        # Fine tunes on annotations
+        if args.verbose:
+            print("Fine tuning of network:")
+            if args.timeit:
+                start = time.time()
+        model = fine_tune(
+                model, rgb_train, seg_train, weights_train, rgb_valid, seg_valid,
+                data_aug=True, n_iter_min=0, n_iter_max=args.maxiter, patience=200,
+                batch_size=BATCH_SIZE, learning_rate=LEARNING_RATE, verbose=args.verbose)
+        if args.verbose and args.timeit:
+            duration = time.time() - start
+            print("Fine tuning took %d min %d s." % (duration // 60, duration % 60))
     
     # Predict the whole experiment
     if args.verbose and args.timeit and device.type == "cpu": # only time if predicting on cpu
         start = time.time()
     predictions = predict_stack(
-            model_ft, wrp_input, BATCH_SIZE, input_channels="RG",
+            model, input_data, BATCH_SIZE, input_channels="RG",
             transform=lambda stack: normalize_range(pad_transform_stack(stack, U_DEPTH)))
     predictions = torch.sigmoid(predictions)
+    
     segmentations = (predictions > 0.5).numpy().astype(np.bool)
+    
     if MIN_AREA is not None:
         for i in range(len(segmentations)):
             segmentations[i] = morphology.remove_small_objects(segmentations[i], MIN_AREA)
+            
     if args.verbose and args.timeit and device.type == "cpu": # only time if predicting on cpu
         duration = time.time() - start
         print("Prediction of experiment took %d min %d s." % (duration // 60, duration % 60))
     
-    return segmentations, annot_projection, seg_annot
+    if finetuning:
+        return segmentations, annot_projection, seg_annot
+    else:
+        # Find a frame to initialize the tracker model
+        # Number of detected ROIs through time
+        n_roi = np.zeros(len(input_data), np.uint8)
+        for i in range(len(segmentations)):
+            _, n = measure.label(segmentations[i], connectivity=1, return_num=True)
+            n_roi[i] = n
+        
+        # Take a frame with #ROIs == mode(#ROIs)
+        mode_n_roi = stats.mode(n_roi)[0]
+        
+        # And with the highest correlation score to the average of the frames with mode(#ROIs) ROIs
+        mean_frame = input_data[n_roi == mode_n_roi].mean(0)
+        cross_corr = np.sum(input_data[n_roi == mode_n_roi] * mean_frame, axis=(1,2,3))
+        
+        init_idx = np.argmax(cross_corr)
+        # Report the index to the full input stack
+        init_idx = np.argmax(np.cumsum(n_roi == mode_n_roi) == init_idx + 1)
+        
+        # Take the smoothed frame and segment it
+        rgb_init = _smooth_frame(input_data[init_idx])
+        seg_init = segmentations[init_idx]
+        
+        return segmentations, rgb_init, seg_init
 
 
-def tracking(args, wrp_input, segmentations, rgb_init, seg_init):
+def tracking(args, input_data, segmentations, rgb_init, seg_init, finetuning):
     """Track and return ROI identities."""   
     if args.verbose:
         print("\nTracking axon identities") 
@@ -171,15 +212,16 @@ def tracking(args, wrp_input, segmentations, rgb_init, seg_init):
     model.initialize(rgb_init, seg_init)
     
     # Compute "cuts" of ROIs
-    cuts = find_cuts(rgb_init, model, min_area=MIN_AREA)
+    if finetuning:
+        cuts = find_cuts(rgb_init, model, min_area=MIN_AREA)
     
     # Update the model frame by frame
     if args.verbose and args.timeit:
         start = time.time()
     for n in range(N_UPDATES):
         for i in range(len(segmentations)):
-            identities[i] = model.match_frame(wrp_input[i], segmentations[i], time_idx=i)
-            model.update(wrp_input[i], identities[i], time_idx=i)
+            identities[i] = model.match_frame(input_data[i], segmentations[i], time_idx=i)
+            model.update(input_data[i], identities[i], time_idx=i)
     if args.verbose and args.timeit:
         duration = time.time() - start
         print("Updating model took %d min %d s." % (duration // 60, duration % 60))
@@ -188,7 +230,7 @@ def tracking(args, wrp_input, segmentations, rgb_init, seg_init):
     if args.verbose and args.timeit:
         start = time.time()
     for i in range(len(segmentations)):
-        identities[i] = model.match_frame(wrp_input[i], segmentations[i], time_idx=i)
+        identities[i] = model.match_frame(input_data[i], segmentations[i], time_idx=i)
     if args.verbose and args.timeit:
         duration = time.time() - start
         print("Identities matching took %d min %d s." % (duration // 60, duration % 60))
@@ -200,19 +242,22 @@ def tracking(args, wrp_input, segmentations, rgb_init, seg_init):
     identities = renumber_ids(model, identities)
     
     # Apply "cuts" to model image and all frames
-    model.image, identities = apply_cuts(cuts, model, identities)
+    if finetuning:
+        model.image, identities = apply_cuts(cuts, model, identities)
     
     return identities, model
 
 
 # TODO: maybe saving intermediate results at each step will be enough
-def save_results(args, i, rgb_input, wrp_input, segmentations, rgb_proj, seg_proj,
+def save_results(args, name, i, input_data, segmentations, rgb_proj, seg_proj,
                  identities, model, tdtom, gcamp, dFF, dRR):
     """Save final results."""
     if args.verbose:
         print("Saving results")
     print("Warnings: saving results is currently only implemented for testing!")
     outdir = "/home/user/talabot/workdir/axoid_outputs/"
+    if name != "":
+        outdir += name + '/'
     if args.animal_folder:
         outdir += str(i) + '/'
     
@@ -222,8 +267,7 @@ def save_results(args, i, rgb_input, wrp_input, segmentations, rgb_proj, seg_pro
     
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        io.imsave(os.path.join(outdir, "RGB.tif"), to_npint(rgb_input))
-        io.imsave(os.path.join(outdir, "warped_RGB.tif"), to_npint(wrp_input))
+        io.imsave(os.path.join(outdir, "input.tif"), to_npint(input_data))
         io.imsave(os.path.join(outdir, "segmentations.tif"), to_npint(segmentations))
         io.imsave(os.path.join(outdir, "rgb_proj.png"), to_npint(rgb_proj))
         io.imsave(os.path.join(outdir, "seg_proj.png"), to_npint(seg_proj))
@@ -265,6 +309,41 @@ def save_results(args, i, rgb_input, wrp_input, segmentations, rgb_proj, seg_pro
     fig_dRR.savefig(os.path.join(outdir, "ROIs_dRR.png"), bbox_inches='tight')
 
 
+def process(args, name, i, input_data, finetuning):
+    """Apply the AxoID pipeline to the data."""
+    if args.verbose:
+        print("\n\t # Processing %s #" % name)
+        if args.timeit:
+            start = time.time()
+    
+    # Detect ROIs as a binary segmentation
+    segmentations, rgb_proj, seg_proj = detection(args, input_data, finetuning)
+    
+    # Track identities through frames
+    identities, model = tracking(args, input_data, segmentations,
+                                 rgb_proj, seg_proj, finetuning)
+    
+    # Extract fluorescence traces as both dF/F and dR/R
+    if args.verbose:
+        print("\nExtracting fluorescence traces")
+        if args.timeit:
+            substart = time.time()
+    len_baseline = int(BIN_S * RATE_HZ + 0.5) # number of frames for baseline computation
+    tdtom, gcamp = get_fluorophores(input_data, identities)
+    dFF, dRR = compute_fluorescence(tdtom, gcamp, len_baseline)
+    if args.verbose and args.timeit:
+        print("Fluorescence extraction took %d s." % (time.time() - substart))
+    
+    # Save all results to folder
+    save_results(args, name, i, input_data, segmentations, rgb_proj, seg_proj,
+                 identities, model, tdtom, gcamp, dFF, dRR)
+    
+    if args.verbose and args.timeit:
+        duration = time.time() - start
+        print("\nProcessing %s took %d min %d s." % 
+              (name, duration // 60, duration % 60))
+
+
 def main(args):
     """Main function of the AxoID script."""
     # Initialiaze the script
@@ -293,28 +372,13 @@ def main(args):
                 start_exp = time.time()
         
         # Load and warp the data
-        rgb_input, wrp_input = get_data(args)
+        rgb_input, ccreg_input, wrp_input = get_data(args)
         
-        # Detect ROIs as a binary segmentation
-        segmentations, rgb_proj, seg_proj = detection(args, wrp_input)
+        # Apply the full AxoID pipeline to the inputs
+        process(args, "Raw", i, rgb_input, finetuning=False)
+        process(args, "CCReg", i, ccreg_input, finetuning=True)
+        process(args, "OFW", i, wrp_input, finetuning=True)
         
-        # Track identities through frames
-        identities, model = tracking(args, wrp_input, segmentations, rgb_proj, seg_proj)
-        
-        # Extract fluorescence traces as both dF/F and dR/R
-        if args.verbose:
-            print("\nExtracting fluorescence traces")
-            if args.timeit:
-                substart = time.time()
-        len_baseline = int(BIN_S * RATE_HZ + 0.5) # number of frames for baseline computation
-        tdtom, gcamp = get_fluorophores(wrp_input, identities)
-        dFF, dRR = compute_fluorescence(tdtom, gcamp, len_baseline)
-        if args.verbose and args.timeit:
-            print("Fluorescence extraction took %d s." % (time.time() - substart))
-        
-        # Save all results to folder
-        save_results(args, i, rgb_input, wrp_input, segmentations, rgb_proj, seg_proj,
-                     identities, model, tdtom, gcamp, dFF, dRR)
         if args.verbose and args.timeit and len(experiments) > 1:
             duration = time.time() - start_exp
             print("\Processing the experiment took %d min %d s." % 
@@ -344,17 +408,16 @@ if __name__ == "__main__":
             "will then be applied sequentially to each"
     )
     parser.add_argument(
-            '--crosscorrelation',
+            '--force_ccreg',
             action="store_true",
-            help="use cross-correlation registration instead of optic flow "
-            "warping as initial data registration"
+            help="force initial cross-correlation registration of the raw data,"
+            " even if \"ccreg_RGB.tif\" already exists"
     )
     parser.add_argument(
             '--force_warp',
             action="store_true",
             help="force initial optic flow warping of the raw data, even if "
-            "\"warped_RGB.tif\" already exists (not necessary if there is no "
-            "warped data in the experiment folder)"
+            "\"warped_RGB.tif\" already exists"
     )
     parser.add_argument(
             '--maxiter',
