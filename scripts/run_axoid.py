@@ -112,9 +112,9 @@ def get_data(args):
             # Call motion_compensation MATLAB script to warp the data
             raise NotImplementedError("call to optic flow warping is not enabled yet")
             # Make temp folder, save tdTom and GCaMP w\ 1st frame, and give this to OFW
-            tmpdir = os.path.join(OUTDIR, "output", "axoid_internal", "tmp")
-            io.imsave(os.path.join(tmpdir, "tdTom.tif"), to_npint(rgb_input[1:,...,0]))
-            io.imsave(os.path.join(tmpdir, "GC6fopt.tif"), to_npint(rgb_input[1:,...,1]))
+            tmpdir = os.path.join(OUTDIR, "output", "axoid_internal", "tmp_ofw")
+            io.imsave(os.path.join(tmpdir, "red.tif"), to_npint(rgb_input[1:,...,0]))
+            io.imsave(os.path.join(tmpdir, "green.tif"), to_npint(rgb_input[1:,...,1]))
             
             command = "echo" # TODO: make call to motion_compensation
             results_dir = os.path.join(OUTDIR, "output", "axoid_internal", "warped_results")
@@ -125,8 +125,8 @@ def get_data(args):
                     check=True, universal_newlines=True)
             
             # Load outputs of warping, and make a `wrp_input stack`
-            wrp_tdtom = imread_to_float(os.path.join(results_dir, "tdTom_warped.tif"))
-            wrp_gcamp = imread_to_float(os.path.join(results_dir, "GC6fopt_warped.tif"))
+            wrp_tdtom = imread_to_float(os.path.join(results_dir, "red_warped.tif"))
+            wrp_gcamp = imread_to_float(os.path.join(results_dir, "green_warped.tif"))
             wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
             # Re-add first frame and remove temp folder
             wrp_input = np.cat([rgb_input[np.newaxis,0], wrp_input], axis=0)
@@ -382,7 +382,7 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
         io.imsave(os.path.join(OUTDIR, "output", "ROI_auto", name, "RGB_seg.tif"),
                   to_npint(input_roi))
     
-    # Save traces and plots
+    # Save traces
     def save_traces(traces, filename):
         """Pickle and save the traces under filename.pkl."""
         data_dic = {"ROI_" + str(i): traces[i] for i in range(len(traces))}
@@ -394,6 +394,7 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
     save_traces(dFF, "dFF_dic")
     save_traces(dRR, "dRR_dic")
     
+    # Save plots of the traces
     def plot_traces(traces, filename, ylabel, ylim=None):
         """Make a plot of the fluorescence traces."""
         color="forestgreen"
