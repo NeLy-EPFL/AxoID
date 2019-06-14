@@ -38,6 +38,8 @@ from axoid.tracking.utils import renumber_ids
 from axoid.utils.image import imread_to_float, to_npint, gray2red
 from axoid.utils.fluorescence import get_fluorophores, compute_fluorescence
 from axoid.utils.ccreg import register_stack
+# Command for optic flow warping through command line
+from motion_compensation_path import COMMAND as OFW_COMMAND
 
 
 ## Constants
@@ -56,9 +58,6 @@ N_UPDATES = 1          # number of pass through whole experiment to update the m
 # Fluorescence extraction
 BIN_S = 10.0           # bin length for baseline computation (s)
 RATE_HZ = 2.418032787  # acquisition rate of 2-photon data (Hz)
-
-# XXX: for testing
-OUTDIR = "/home/user/talabot/workdir/axoid_outputs/"
 
 
 def get_data(args):
@@ -90,11 +89,11 @@ def get_data(args):
         # Save the registered stack and temporal projection
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
-            io.imsave(os.path.join(OUTDIR, "2Pimg", "ccreg_RGB.tif"), 
+            io.imsave(os.path.join(args.experiment, "2Pimg", "ccreg_RGB.tif"), 
                       to_npint(ccreg_input))
-            io.imsave(os.path.join(OUTDIR, "2Pimg", "AVG_ccreg_RGB.tif"), 
+            io.imsave(os.path.join(args.experiment, "2Pimg", "AVG_ccreg_RGB.tif"), 
                       to_npint(ccreg_input.mean(0)))
-            io.imsave(os.path.join(OUTDIR, "2Pimg", "AVG_ccreg_tdTom.tif"), 
+            io.imsave(os.path.join(args.experiment, "2Pimg", "AVG_ccreg_tdTom.tif"), 
                       to_npint(gray2red(ccreg_input[..., 0].mean(0))))
     
     # If warping is not enforced, look for existing warped data
@@ -108,36 +107,43 @@ def get_data(args):
             if args.timeit:
                 start = time.time()
                 
-        try:
-            # Call motion_compensation MATLAB script to warp the data
-            raise NotImplementedError("call to optic flow warping is not enabled yet")
-            # Make temp folder, save tdTom and GCaMP w\ 1st frame, and give this to OFW
-            tmpdir = os.path.join(OUTDIR, "output", "axoid_internal", "tmp_ofw")
-            io.imsave(os.path.join(tmpdir, "red.tif"), to_npint(rgb_input[1:,...,0]))
-            io.imsave(os.path.join(tmpdir, "green.tif"), to_npint(rgb_input[1:,...,1]))
-            
-            command = "echo" # TODO: make call to motion_compensation
-            results_dir = os.path.join(OUTDIR, "output", "axoid_internal", "warped_results")
-            wrp_process = subprocess.run(
-                    command.split(" ") + [tmpdir, "-l", str(args.warp_l),
-                    "-g", str(args.warp_g), "-results_dir", results_dir],
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    check=True, universal_newlines=True)
-            
-            # Load outputs of warping, and make a `wrp_input stack`
-            wrp_tdtom = imread_to_float(os.path.join(results_dir, "red_warped.tif"))
-            wrp_gcamp = imread_to_float(os.path.join(results_dir, "green_warped.tif"))
-            wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
-            # Re-add first frame and remove temp folder
-            wrp_input = np.cat([rgb_input[np.newaxis,0], wrp_input], axis=0)
-            shutil.rmtree(tmpdir)
-        finally:
-            # Save warping logs regardless of exit status
-            log_path = os.path.join(OUTDIR, "output", "axoid_internal", "logs_warping.txt")
-            with open(log_path, "w") as f:
-                f.write(wrp_process.stdout)
-            if args.verbose:
-                print("Warping logs saved at %s." % log_path)
+        # Call motion_compensation MATLAB script to warp the data
+        # Make temp folder, save tdTom and GCaMP w\ 1st frame
+        tmpdir = os.path.join(args.experiment, "output", "axoid_internal", "tmp_ofw")
+        os.makedirs(tmpdir, exist_ok=True)
+        io.imsave(os.path.join(tmpdir, "red.tif"), to_npint(rgb_input[1:,...,0]))
+        io.imsave(os.path.join(tmpdir, "green.tif"), to_npint(rgb_input[1:,...,1]))
+        
+        # Give it to OFW through a subprocess
+        results_dir = os.path.join(args.experiment, "output", "axoid_internal",
+                                   "warped_results")
+        wrp_process = subprocess.run(
+                OFW_COMMAND.split(" ") + [tmpdir, "-l", str(args.warp_l),
+                "-g", str(args.warp_g), "-results_dir", results_dir],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                check=False, universal_newlines=True)
+        
+        # Save warping logs regardless of exit status
+        log_path = os.path.join(args.experiment, "output", "axoid_internal",
+                                "logs_warping.txt")
+        with open(log_path, "w") as f:
+            f.write(wrp_process.stdout)
+        if args.verbose:
+            print("Warping logs saved at %s." % log_path)
+        
+        # Check wether the subprocess failed
+        wrp_process.check_returncode()
+        
+        # Load outputs of warping, and make a `wrp_input stack`
+        wrp_tdtom = imread_to_float(os.path.join(results_dir, 
+            "l%dg%d" % (args.warp_l, args.warp_g), "red_warped.tif"))
+        wrp_gcamp = imread_to_float(os.path.join(results_dir, 
+            "l%dg%d" % (args.warp_l, args.warp_g), "green_warped.tif"))
+        wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
+        
+        # Re-add the (unwapred) first frame and remove temp folder
+        wrp_input = np.concatenate([rgb_input[np.newaxis,0], wrp_input], axis=0)
+        shutil.rmtree(tmpdir)
         
         if args.verbose and args.timeit:
             duration = time.time() - start
@@ -146,11 +152,11 @@ def get_data(args):
         # Save the warped stack and temporal projection
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
-            io.imsave(os.path.join(OUTDIR, "2Pimg", "warped_RGB.tif"), 
+            io.imsave(os.path.join(args.experiment, "2Pimg", "warped_RGB.tif"), 
                       to_npint(wrp_input))
-            io.imsave(os.path.join(OUTDIR, "2Pimg", "AVG_warped_RGB.tif"), 
+            io.imsave(os.path.join(args.experiment, "2Pimg", "AVG_warped_RGB.tif"), 
                       to_npint(wrp_input.mean(0)))
-            io.imsave(os.path.join(OUTDIR, "2Pimg", "AVG_warped_tdTom.tif"), 
+            io.imsave(os.path.join(args.experiment, "2Pimg", "AVG_warped_tdTom.tif"), 
                       to_npint(gray2red(wrp_input[..., 0].mean(0))))
     
     return rgb_input, ccreg_input, wrp_input
@@ -173,7 +179,7 @@ def detection(args, name, input_data, finetuning):
         print("PyTorch device:", device)
     model_name = "190510_aug_synth"
     
-    outdir = os.path.join(OUTDIR, "output", "axoid_internal", name)
+    outdir = os.path.join(args.experiment, "output", "axoid_internal", name)
     
     # Load initial model
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
@@ -296,7 +302,7 @@ def tracking(args, name, input_data, segmentations, rgb_init, seg_init, finetuni
     """Track and return ROI identities."""   
     if args.verbose:
         print("\nTracking axon identities") 
-    outdir = os.path.join(OUTDIR, "output", "axoid_internal", name)
+    outdir = os.path.join(args.experiment, "output", "axoid_internal", name)
     
     # Initialize the model
     identities = np.zeros(segmentations.shape, np.uint8)
@@ -357,16 +363,19 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
     if args.verbose:
         print("Saving results")
     
-    # Save input + contours stack
+    # Save input + contours stack and contour list
     ids = np.unique(identities)
     ids = ids[ids != 0]
     input_roi = to_npint(input_data)
+    contour_list = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", Warning)
         for i in range(len(input_roi)):
+            contour_list.append([])
             for n, id in enumerate(ids):
                 roi_img = (identities[i] == id)
                 if np.sum(roi_img) == 0:
+                    contour_list[i].append([])
                     continue
                 _, contours, _ = cv2.findContours(roi_img.astype(np.uint8),
                                                   cv2.RETR_LIST,
@@ -376,17 +385,21 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
                 cv2.drawContours(input_roi[i], contours, -1, (255,255,255), 1)
                 cv2.putText(input_roi[i], str(n), (int(x), int(y)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,255), 1)
+                contour_list[i].append(contours[0])
         
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", Warning)
-        io.imsave(os.path.join(OUTDIR, "output", "ROI_auto", name, "RGB_seg.tif"),
-                  to_npint(input_roi))
+        io.imsave(os.path.join(args.experiment, "output", "ROI_auto", name,
+                               "RGB_seg.tif"), to_npint(input_roi))
+    with open(os.path.join(args.experiment, "output", "GC6_auto", name, 
+                           "All_contour_list_dic_Usr.p"), "wb") as f:
+        pickle.dump({"AllContours": contour_list}, f)
     
     # Save traces
     def save_traces(traces, filename):
         """Pickle and save the traces under filename.pkl."""
         data_dic = {"ROI_" + str(i): traces[i] for i in range(len(traces))}
-        with open(os.path.join(OUTDIR, "output", "GC6_auto", name, 
+        with open(os.path.join(args.experiment, "output", "GC6_auto", name, 
                                filename + ".p"), "wb") as f:
             pickle.dump(data_dic, f)
     save_traces(tdtom, "tdTom_abs_dic")
@@ -422,7 +435,8 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
             else:
                 plt.xlabel("Frame", size=10)
                 
-        fig.savefig(os.path.join(OUTDIR, "output", "GC6_auto", name, filename + ".png"),
+        fig.savefig(os.path.join(args.experiment, "output", "GC6_auto", name, 
+                                 filename + ".png"),
                     bbox_inches='tight', facecolor=fig.get_facecolor(),
                     edgecolor='none', transparent=True)
     
@@ -440,9 +454,9 @@ def process(args, name, input_data, finetuning):
             start = time.time()
     
     # Make folders and subfolders
-    os.makedirs(os.path.join(OUTDIR, "output", "axoid_internal", name), exist_ok=True)
-    os.makedirs(os.path.join(OUTDIR, "output", "GC6_auto", name), exist_ok=True)
-    os.makedirs(os.path.join(OUTDIR, "output", "ROI_auto", name), exist_ok=True)
+    os.makedirs(os.path.join(args.experiment, "output", "axoid_internal", name), exist_ok=True)
+    os.makedirs(os.path.join(args.experiment, "output", "GC6_auto", name), exist_ok=True)
+    os.makedirs(os.path.join(args.experiment, "output", "ROI_auto", name), exist_ok=True)
     
     # Detect ROIs as a binary segmentation
     segmentations, rgb_proj, seg_proj = detection(args, name, input_data, finetuning)
@@ -485,11 +499,7 @@ def main(args):
         print("AxoID started on " + time.asctime())
     
     # Create output directory
-    if os.path.isdir(OUTDIR):
-        shutil.rmtree(OUTDIR)
-    os.makedirs(OUTDIR)
-    os.makedirs(os.path.join(OUTDIR, "2Pimg"), exist_ok=True) # TODO: remove after testing
-    os.makedirs(os.path.join(OUTDIR, "output", "axoid_internal"), exist_ok=True)
+    os.makedirs(os.path.join(args.experiment, "output", "axoid_internal"), exist_ok=True)
     
     # Load and warp the data
     rgb_input, ccreg_input, wrp_input = get_data(args)
@@ -560,16 +570,16 @@ if __name__ == "__main__":
             help="enable output verbosity"
     )
     parser.add_argument(
+            '--warp_g',
+            type=int,
+            default=10,
+            help="gamma parameter for the optic flow warping (default=10)"
+    )
+    parser.add_argument(
             '--warp_l',
             type=int,
             default=300,
             help="lambda parameter for the optic flow warping (default=300)"
-    )
-    parser.add_argument(
-            '--warp_g',
-            type=int,
-            default=10,
-            help="lambda parameter for the optic flow warping (default=10)"
     )
     args = parser.parse_args()
 
