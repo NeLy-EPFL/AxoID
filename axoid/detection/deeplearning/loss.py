@@ -10,7 +10,7 @@ Created on Wed Feb 20 10:29:37 2019
 import torch
 
    
-def get_BCEWithLogits_loss(reduction='elementwise_mean', 
+def get_BCEWithLogits_loss(reduction='mean', 
                            pos_weight=1, neg_weight=1):
     """
     Return a loss function that computes the binary cross entropy with logits,
@@ -28,7 +28,7 @@ def get_BCEWithLogits_loss(reduction='elementwise_mean',
         else:
             weight *= pos_weight - neg_weight
         weight += neg_weight
-        weight[torch.tensor(target, dtype=torch.uint8)] = pos_weight
+        weight[target.byte()] = pos_weight
         
         # Compute BCE
         loss = torch.nn.functional.binary_cross_entropy_with_logits(
