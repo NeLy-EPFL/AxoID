@@ -488,8 +488,8 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
     
     plot_traces(tdtom, "ROIS_tdTom", ylabel="F", ylim=(-0.05, 1.05))
     plot_traces(gcamp, "ROIS_GC", ylabel="F", ylim=(-0.05, 1.05))
-    plot_traces(dFF, "ROIs_dFF", ylabel="$\Delta$R/R (%)")
-    plot_traces(dRR, "ROIs_dRR", ylabel="$\Delta$F/F (%)")
+    plot_traces(dFF, "ROIs_dFF", ylabel="$\Delta$F/F (%)")
+    plot_traces(dRR, "ROIs_dRR", ylabel="$\Delta$R/R (%)")
 
 
 def process(args, name, input_data, fluo_data=None, finetuning=True):
