@@ -100,7 +100,7 @@ def get_data(args):
         if args.force_warp:
             raise RuntimeError("force_warp and warpdir are not compatible")
         if args.verbose:
-            print("Warped data found, loading it")
+            print("Warped data found in %s, loading it" % args.warpdir)
         folder = args.warpdir
         folder = os.path.join(folder, os.listdir(folder)[0])
         wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
@@ -109,7 +109,7 @@ def get_data(args):
     elif not args.force_warp and os.path.isdir(
             os.path.join(args.experiment, "2Pimg", "results_GreenRed")):
         if args.verbose:
-            print("Warped data found, loading it")
+            print("Warped data found in results_GreenRed/, loading it")
         folder = os.path.join(args.experiment, "2Pimg", "results_GreenRed")
         folder = os.path.join(folder, os.listdir(folder)[0])
         wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
@@ -118,7 +118,7 @@ def get_data(args):
     elif not args.force_warp and os.path.isdir(
             os.path.join(args.experiment, "2Pimg", "results")):
         if args.verbose:
-            print("Warped data found, loading it")
+            print("Warped data found in results/, loading it")
         folder = os.path.join(args.experiment, "2Pimg", "results")
         folder = os.path.join(folder, os.listdir(folder)[0])
         wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
