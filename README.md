@@ -24,8 +24,8 @@ If the user intend to use `motion_compensation`, the file `motion_compensation_p
 To print the help (see below), use `python run_axoid.py --help`. The following message will print:
 ```
 usage: run_axoid.py [-h] [--force_ccreg] [--force_warp] [--maxiter MAXITER]
-                    [--no_gpu] [-s SEED] [-t] [-v] [--warp_g WARP_G]
-                    [--warp_l WARP_L]
+                    [--no_gpu] [-s SEED] [-t] [-v] [--warpdir WARPDIR]
+                    [--warp_g WARP_G] [--warp_l WARP_L]
                     experiment
 
 Main script of AxoID that detects and tracks ROIs on 2-photon neuroimaging
@@ -47,6 +47,8 @@ optional arguments:
   -t, --timeit          time the script. If --verbose is used, sub-parts of
                         the script will also be timed.
   -v, --verbose         enable output verbosity
+  --warpdir WARPDIR     directory where the warped output is stored inside
+                        2Pimg/
   --warp_g WARP_G       gamma parameter for the optic flow warping
                         (default=10)
   --warp_l WARP_L       lambda parameter for the optic flow warping
