@@ -97,48 +97,38 @@ def get_data(args):
                       to_npint(gray2red(ccreg_input[..., 0].mean(0))))
     
     # If warping is not enforced, look for existing warped data
-    if not args.force_ccreg and os.path.isfile(wrp_path):
+    if not args.force_warp and os.path.isfile(wrp_path):
         if args.verbose:
             print("warped_RGB.tif found, loading it")
         wrp_input = imread_to_float(wrp_path)
     else:
         wrp_input = None
     # Look for warped data to use for fluorescence computation
-    if args.warpdir is not None and os.path.isdir(args.warpdir):
-        if args.force_warp:
-            raise RuntimeError("force_warp and warpdir are not compatible")
-        if args.verbose:
-            print("Warped data found in %s, loading it" % args.warpdir)
-        folder = args.warpdir
-        folder = os.path.join(folder, os.listdir(folder)[0])
-        wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
-        wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
-        wrp_fluo = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)        
-    elif not args.force_warp and os.path.isdir(
-            os.path.join(args.experiment, "2Pimg", "results_GreenRed")):
-        if args.verbose:
-            print("Warped data found in results_GreenRed/, loading it")
-        folder = os.path.join(args.experiment, "2Pimg", "results_GreenRed")
-        folder = os.path.join(folder, os.listdir(folder)[0])
-        wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
-        wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
-        wrp_fluo = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
-    elif not args.force_warp and os.path.isdir(
-            os.path.join(args.experiment, "2Pimg", "results")):
-        if args.verbose:
-            print("Warped data found in results/, loading it")
-        folder = os.path.join(args.experiment, "2Pimg", "results")
-        folder = os.path.join(folder, os.listdir(folder)[0])
-        wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
-        wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
-        wrp_fluo = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
-    # If no warped data for fluorescence, copy warped_RGB.tif
-    elif wrp_input is not None:
-        if args.verbose:
-            print("Warped data not found, copying warped_RGB.tif")
-        wrp_fluo = wrp_input.copy()
-    # If nothing is available, warp the input data
-    else:
+    if not args.force_warp:
+        if args.warpdir is not None:
+            folder = args.warpdir
+        elif os.path.isdir(os.path.join(args.experiment, "2Pimg", "results_GreenRed")):
+            folder = "results_GreenRed"
+        elif os.path.isdir(os.path.join(args.experiment, "2Pimg", "results")):
+            folder = "results"
+        elif wrp_input is not None:
+            folder = None
+            if args.verbose:
+                print("Warped data for fluorescence not found, copying warped_RGB.tif")
+            wrp_fluo = wrp_input.copy()
+        else:
+            folder = None
+            wrp_fluo = None
+            print("No warped data was found")
+        
+        if folder is not None:
+            folder = os.path.join(args.experiment, "2Pimg", folder)
+            folder = os.path.join(folder, os.listdir(folder)[0])
+            wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
+            wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
+            wrp_fluo = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
+    # If force or no data, apply warping
+    if args.force_warp or wrp_fluo is None:
         if args.verbose:
             print("Starting optic flow warping of input data")
             if args.timeit:
