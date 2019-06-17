@@ -20,7 +20,7 @@ where `/path/to/experiment` point to an experiment folder, excluding the `2Pimg/
 The script requires either available warped data, either the `motion_compensation` repository installed inoreder to automatically call the warping.  
 If the user intend to use `motion_compensation`, the file `motion_compensation_path.py` should be modified accordingly by writing the paths to the main script of `motion_compensation` and to MATLAB.
 
-### Optional argument
+### Optional arguments
 To print the help (see below), use `python run_axoid.py --help`. The following message will print:
 ```
 usage: run_axoid.py [-h] [--force_ccreg] [--force_warp] [--maxiter MAXITER]

@@ -66,7 +66,6 @@ def get_data(args):
         print("\nGetting input data")
     rgb_path = os.path.join(args.experiment, "2Pimg", "RGB.tif")
     ccreg_path = os.path.join(args.experiment, "2Pimg", "ccreg_RGB.tif")
-    wrp_path = os.path.join(args.experiment, "2Pimg", "warped_RGB.tif")
     
     rgb_input = imread_to_float(rgb_path)
     
@@ -97,10 +96,34 @@ def get_data(args):
                       to_npint(gray2red(ccreg_input[..., 0].mean(0))))
     
     # If warping is not enforced, look for existing warped data
-    if not args.force_warp and os.path.isfile(wrp_path):
+    if args.warpdir is not None and os.path.isdir(args.warpdir):
+        if args.force_warp:
+            raise RuntimeError("force_warp and warpdir are not compatible")
         if args.verbose:
             print("Warped data found, loading it")
-        wrp_input = imread_to_float(wrp_path)
+        folder = args.warpdir
+        folder = os.path.join(folder, os.listdir(folder)[0])
+        wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
+        wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
+        wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)        
+    elif not args.force_warp and os.path.isdir(
+            os.path.join(args.experiment, "2Pimg", "results_GreenRed")):
+        if args.verbose:
+            print("Warped data found, loading it")
+        folder = os.path.join(args.experiment, "2Pimg", "results_GreenRed")
+        folder = os.path.join(folder, os.listdir(folder)[0])
+        wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
+        wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
+        wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
+    elif not args.force_warp and os.path.isdir(
+            os.path.join(args.experiment, "2Pimg", "results")):
+        if args.verbose:
+            print("Warped data found, loading it")
+        folder = os.path.join(args.experiment, "2Pimg", "results")
+        folder = os.path.join(folder, os.listdir(folder)[0])
+        wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
+        wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
+        wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
     else:
         if args.verbose:
             print("Starting optic flow warping of input data")
@@ -142,6 +165,8 @@ def get_data(args):
         wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
         
         # Re-add the (unwapred) first frame and remove temp folder
+        wrp_tdtom = np.concatenate([rgb_input[np.newaxis,0,...,0], wrp_tdtom], axis=0)
+        wrp_gcamp = np.concatenate([rgb_input[np.newaxis,0,...,1], wrp_gcamp], axis=0)
         wrp_input = np.concatenate([rgb_input[np.newaxis,0], wrp_input], axis=0)
         shutil.rmtree(tmpdir)
         
@@ -150,14 +175,15 @@ def get_data(args):
             print("Optic Flow Warping took %d min %d s." % (duration // 60, duration % 60))
             
         # Save the warped stack and temporal projection
+        wrpdir = os.path.join(args.experiment, "2Pimg", "results", 
+                              "l%dg%d" % (args.warp_l, args.warp_g))
+        os.makedirs(wrpdir)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
-            io.imsave(os.path.join(args.experiment, "2Pimg", "warped_RGB.tif"), 
-                      to_npint(wrp_input))
-            io.imsave(os.path.join(args.experiment, "2Pimg", "AVG_warped_RGB.tif"), 
-                      to_npint(wrp_input.mean(0)))
-            io.imsave(os.path.join(args.experiment, "2Pimg", "AVG_warped_tdTom.tif"), 
-                      to_npint(gray2red(wrp_input[..., 0].mean(0))))
+            io.imsave(os.path.join(wrpdir, "warped1.tif"), 
+                      to_npint(wrp_tdtom))
+            io.imsave(os.path.join(wrpdir, "warped2.tif"), 
+                      to_npint(wrp_gcamp))
     
     return rgb_input, ccreg_input, wrp_input
 
@@ -568,6 +594,12 @@ if __name__ == "__main__":
             '-v', '--verbose', 
             action="store_true",
             help="enable output verbosity"
+    )
+    parser.add_argument(
+            '--warpdir',
+            type=str,
+            default=None,
+            help="directory where the warped output is stored inside 2Pimg/"
     )
     parser.add_argument(
             '--warp_g',
