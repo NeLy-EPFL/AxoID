@@ -66,6 +66,7 @@ def get_data(args):
         print("\nGetting input data")
     rgb_path = os.path.join(args.experiment, "2Pimg", "RGB.tif")
     ccreg_path = os.path.join(args.experiment, "2Pimg", "ccreg_RGB.tif")
+    wrp_path = os.path.join(args.experiment, "2Pimg", "warped_RGB.tif")
     
     rgb_input = imread_to_float(rgb_path)
     
@@ -96,6 +97,13 @@ def get_data(args):
                       to_npint(gray2red(ccreg_input[..., 0].mean(0))))
     
     # If warping is not enforced, look for existing warped data
+    if not args.force_ccreg and os.path.isfile(wrp_path):
+        if args.verbose:
+            print("warped_RGB.tif found, loading it")
+        wrp_input = imread_to_float(wrp_path)
+    else:
+        wrp_input = None
+    # Look for warped data to use for fluorescence computation
     if args.warpdir is not None and os.path.isdir(args.warpdir):
         if args.force_warp:
             raise RuntimeError("force_warp and warpdir are not compatible")
@@ -105,7 +113,7 @@ def get_data(args):
         folder = os.path.join(folder, os.listdir(folder)[0])
         wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
         wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
-        wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)        
+        wrp_fluo = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)        
     elif not args.force_warp and os.path.isdir(
             os.path.join(args.experiment, "2Pimg", "results_GreenRed")):
         if args.verbose:
@@ -114,7 +122,7 @@ def get_data(args):
         folder = os.path.join(folder, os.listdir(folder)[0])
         wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
         wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
-        wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
+        wrp_fluo = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
     elif not args.force_warp and os.path.isdir(
             os.path.join(args.experiment, "2Pimg", "results")):
         if args.verbose:
@@ -123,7 +131,13 @@ def get_data(args):
         folder = os.path.join(folder, os.listdir(folder)[0])
         wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
         wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
-        wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
+        wrp_fluo = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
+    # If no warped data for fluorescence, copy warped_RGB.tif
+    elif wrp_input is not None:
+        if args.verbose:
+            print("Warped data not found, copying warped_RGB.tif")
+        wrp_fluo = wrp_input.copy()
+    # If nothing is available, warp the input data
     else:
         if args.verbose:
             print("Starting optic flow warping of input data")
@@ -168,6 +182,7 @@ def get_data(args):
         wrp_tdtom = np.concatenate([rgb_input[np.newaxis,0,...,0], wrp_tdtom], axis=0)
         wrp_gcamp = np.concatenate([rgb_input[np.newaxis,0,...,1], wrp_gcamp], axis=0)
         wrp_input = np.concatenate([rgb_input[np.newaxis,0], wrp_input], axis=0)
+        wrp_fluo = wrp_input.copy()
         shutil.rmtree(tmpdir)
         
         if args.verbose and args.timeit:
@@ -185,7 +200,12 @@ def get_data(args):
             io.imsave(os.path.join(wrpdir, "warped2.tif"), 
                       to_npint(wrp_gcamp))
     
-    return rgb_input, ccreg_input, wrp_input
+    if wrp_input is None:
+        if args.verbose:
+            print("warped_RGB.tif not found, copying warped data from results folder")
+        wrp_input = wrp_fluo.copy()
+    
+    return rgb_input, ccreg_input, wrp_input, wrp_fluo
 
 
 def _smooth_frame(frame):
@@ -472,7 +492,7 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
     plot_traces(dRR, "ROIs_dRR", ylabel="$\Delta$F/F (%)")
 
 
-def process(args, name, input_data, finetuning):
+def process(args, name, input_data, fluo_data=None, finetuning=True):
     """Apply the AxoID pipeline to the data."""
     if args.verbose:
         print("\n\t # Processing %s #" % name)
@@ -498,7 +518,10 @@ def process(args, name, input_data, finetuning):
             substart = time.time()
             
     len_baseline = int(BIN_S * RATE_HZ + 0.5) # number of frames for baseline computation
-    tdtom, gcamp = get_fluorophores(input_data, identities)
+    if fluo_data is None:
+        tdtom, gcamp = get_fluorophores(input_data, identities)
+    else:
+        tdtom, gcamp = get_fluorophores(fluo_data, identities)
     dFF, dRR = compute_fluorescence(tdtom, gcamp, len_baseline)
     
     if args.verbose and args.timeit:
@@ -527,8 +550,8 @@ def main(args):
     # Create output directory
     os.makedirs(os.path.join(args.experiment, "output", "axoid_internal"), exist_ok=True)
     
-    # Load and warp the data
-    rgb_input, ccreg_input, wrp_input = get_data(args)
+    # Load and register the data
+    rgb_input, ccreg_input, wrp_input, wrp_fluo = get_data(args)
     
     # Apply the full AxoID pipeline to the inputs
     #  Currently the calls are sequential. It should be possible to 
@@ -536,7 +559,7 @@ def main(args):
     #  require access to the GPU (which could cause out of memory errors)
     process(args, "raw", rgb_input, finetuning=False)
     process(args, "ccreg", ccreg_input, finetuning=True)
-    process(args, "warped", wrp_input, finetuning=True)
+    process(args, "warped", wrp_input, wrp_fluo, finetuning=True)
     
     if args.timeit:
         duration = time.time() - start
