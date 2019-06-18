@@ -234,6 +234,21 @@ def detection(args, name, input_data, finetuning):
             annot_projection = _smooth_frame(annot_projection)
         seg_annot = segment_projection(annot_projection, min_area=MIN_AREA)
         
+        # Save intermediate results
+        with open(os.path.join(outdir, "indices_ft.txt"), "w") as f:
+            for idx in indices:
+                f.write(str(idx) + "\n")
+        seg_annot_cut = segment_projection(annot_projection, min_area=MIN_AREA, 
+                                           separation_border=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", Warning)
+            io.imsave(os.path.join(outdir, "rgb_projection_ft.tif"), 
+                      to_npint(annot_projection))
+            io.imsave(os.path.join(outdir, "seg_projection_ft.tif"), 
+                      to_npint(seg_annot))
+            io.imsave(os.path.join(outdir, "seg_projection_ft_cut.tif"), 
+                      to_npint(seg_annot_cut))
+        
         # Make annotations out of the cluster
         # ratio between train&validation, with a maximum number of frames
         n_train = int(TRAIN_RATIO * min(len(indices), N_ANNOT_MAX))
@@ -256,21 +271,6 @@ def detection(args, name, input_data, finetuning):
         if args.verbose and args.timeit:
             duration = time.time() - start
             print("Fine tuning took %d min %d s." % (duration // 60, duration % 60))
-        
-        # Save intermediate results
-        with open(os.path.join(outdir, "indices_ft.txt"), "w") as f:
-            for idx in indices:
-                f.write(str(idx) + "\n")
-        seg_annot_cut = segment_projection(annot_projection, min_area=MIN_AREA, 
-                                           separation_border=True)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", Warning)
-            io.imsave(os.path.join(outdir, "rgb_projection_ft.tif"), 
-                      to_npint(annot_projection))
-            io.imsave(os.path.join(outdir, "seg_projection_ft.tif"), 
-                      to_npint(seg_annot))
-            io.imsave(os.path.join(outdir, "seg_projection_ft_cut.tif"), 
-                      to_npint(seg_annot_cut))
             
     
     # Predict the whole experiment
@@ -376,13 +376,14 @@ def tracking(args, name, input_data, segmentations, rgb_init, seg_init, finetuni
     
     # Apply "cuts" to model image and all frames
     if finetuning:
-        # Save before cuts
+        # Save results before cuts are applid
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
             io.imsave(os.path.join(outdir, "identities_precut.tif"), 
                       to_npint(identities))
             io.imsave(os.path.join(outdir, "model_precut.tif"), 
                       to_npint(model.image))
+        
         model.image, identities = apply_cuts(cuts, model, identities)
     
     # Save resulting identities and model
