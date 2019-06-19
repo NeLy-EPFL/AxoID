@@ -258,18 +258,18 @@ def detection(args, name, input_data, finetuning):
             print("Fine tuning took %d min %d s." % (duration // 60, duration % 60))
         
         # Save intermediate results
-        with open(os.path.join(outdir, "indices_ft.txt"), "w") as f:
+        with open(os.path.join(outdir, "indices_init.txt"), "w") as f:
             for idx in indices:
                 f.write(str(idx) + "\n")
         seg_annot_cut = segment_projection(annot_projection, min_area=MIN_AREA, 
                                            separation_border=True)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
-            io.imsave(os.path.join(outdir, "rgb_projection_ft.tif"), 
+            io.imsave(os.path.join(outdir, "rgb_init.tif"), 
                       to_npint(annot_projection))
-            io.imsave(os.path.join(outdir, "seg_projection_ft.tif"), 
+            io.imsave(os.path.join(outdir, "seg_init.tif"), 
                       to_npint(seg_annot))
-            io.imsave(os.path.join(outdir, "seg_projection_ft_cut.tif"), 
+            io.imsave(os.path.join(outdir, "seg_init_cut.tif"), 
                       to_npint(seg_annot_cut))
             
     
@@ -324,7 +324,7 @@ def detection(args, name, input_data, finetuning):
         seg_init = segmentations[init_idx]
         
         # Save initialization frame
-        with open(os.path.join(outdir, "index_init.txt"), "w") as f:
+        with open(os.path.join(outdir, "indices_init.txt"), "w") as f:
             f.write(str(init_idx))
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
