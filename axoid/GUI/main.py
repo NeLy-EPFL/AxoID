@@ -7,8 +7,6 @@ Created on Tue Jun 18 17:16:11 2019
 @author: nicolas
 """
 
-import os.path
-
 from PyQt5.QtWidgets import QHBoxLayout
 
 from .multipage import MultiPageWidget
@@ -22,7 +20,7 @@ from .constants import PAGE_SELECTION, PAGE_MODEL, PAGE_CORRECTION, PAGE_ANNOTAT
 class AxoIDWindow(MultiPageWidget):
     """Main window for the AxoID GUI."""
     
-    def __init__(self, experiment, *args, **kwargs):
+    def __init__(self, experiment, *args, goto=None, **kwargs):
         """Initialize the window."""
         super().__init__(*args, **kwargs)
         
@@ -35,6 +33,10 @@ class AxoIDWindow(MultiPageWidget):
         self.addPage(AnnotationPage(self.experiment), PAGE_ANNOTATION)
         
         self.initUI()
+        
+        # Change page
+        if goto is not None:
+            self.changePage(goto)
     
     def initUI(self):
         """Initialize the user interface."""

@@ -10,8 +10,8 @@ Created on Wed Jun 19 17:24:26 2019
 import numpy as np
 from skimage import io
 
-from PyQt5.QtCore import Qt, QEvent
-from PyQt5.QtWidgets import QLabel, QSizePolicy, QScrollArea, QAbstractScrollArea
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QLabel, QSizePolicy, QScrollArea
 from PyQt5.QtGui import QImage, QPixmap
 
 from axoid.utils.image import to_npint

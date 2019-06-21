@@ -19,24 +19,20 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from skimage import io
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIntValidator, QPixmap
-from PyQt5.QtWidgets import (QHBoxLayout, QVBoxLayout, QGridLayout,
-                             QPushButton, QLabel, QComboBox, QSlider, QSizePolicy,
-                             QGroupBox, QLineEdit, QLayout, QScrollArea, QAbstractScrollArea)
+from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton
 
 from .constants import PAGE_MODEL, CHOICE_PATHS, ID_CMAP
-from .multipage import PageWidget
 from .image import LabelImage, LabelStack, VerticalScrollImage
+from .multipage import AxoidPage
 from axoid.utils.image import to_id_cmap
 
 
-class SelectionPage(PageWidget):
+class SelectionPage(AxoidPage):
     """Page of the output selection process."""
     
-    def __init__(self, experiment, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         """Initialize the selection page."""
         super().__init__(*args, **kwargs)
-        self.experiment = experiment
         
         # Get max number of axons amongst outputs
         self.n_axons_max = -np.inf
@@ -69,7 +65,6 @@ class SelectionPage(PageWidget):
             self.choice_widgets.update({folder: QLabel()})
             self.choice_layouts[folder].addWidget(self.choice_widgets[folder],
                                                   alignment=Qt.AlignCenter)
-        self.len_exp = len(io.imread(roi_path))
         # Get colorbar image
         fig, ax = plt.subplots(1, 1, figsize=(0.5,3),
                                facecolor=[1,1,1,0], constrained_layout=True)
@@ -84,17 +79,11 @@ class SelectionPage(PageWidget):
     
     def initUI(self):
         """Initialize the interface."""
-        # Top level layout
-        top_hbox = QHBoxLayout()
-        
-        ## Left layout with images from all outputs
-        left_vbox = QVBoxLayout()
-        left_display = QGridLayout()
+        ## Left display
         for row in [1, 2, 3]:
-            left_display.setRowStretch(row, 1)
+            self.left_display.setRowStretch(row, 1)
         for col in [1, 2, 3]:
-            left_display.setColumnStretch(col, 1)
-        left_vbox.addLayout(left_display)
+            self.left_display.setColumnStretch(col, 1)
             
         # Row and column labels
         labels = ["Raw", "CCReg", "Warped", "Model", "ROI_auto"]
@@ -103,14 +92,14 @@ class SelectionPage(PageWidget):
         for label, position, alignment in zip(labels, positions, alignments):
             lbl = QLabel(label)
             lbl.setAlignment(Qt.AlignCenter)
-            left_display.addWidget(lbl, *position, alignment=alignment)
+            self.left_display.addWidget(lbl, *position, alignment=alignment)
             
         # Model and ROI_auto images
         for folder, (row, col) in zip(["raw", "ccreg", "warped"], [(1,1), (1,2), (1,3)]):
-            left_display.addWidget(self.models[folder], row, col, alignment=Qt.AlignCenter)
+            self.left_display.addWidget(self.models[folder], row, col, alignment=Qt.AlignCenter)
             
-            left_display.addWidget(self.roi_autos[folder], row+1, col, alignment=Qt.AlignCenter)
-            
+            self.left_display.addWidget(self.roi_autos[folder], row+1, col, alignment=Qt.AlignCenter)
+        
         # Dropdown choice for last row
         combo = QComboBox()
         combo.setFocusPolicy(Qt.ClickFocus)
@@ -119,47 +108,17 @@ class SelectionPage(PageWidget):
         combo.setCurrentText("ΔR/R")
         self.changeChoice(combo.currentText())
         combo.activated[str].connect(self.changeChoice)
-        left_display.addWidget(combo, 3, 0, alignment=Qt.AlignVCenter | Qt.AlignLeft)
+        self.left_display.addWidget(combo, 3, 0, alignment=Qt.AlignVCenter | Qt.AlignLeft)
         # Last row images
         for folder, position in zip(["raw", "ccreg", "warped"], [(3,1), (3,2), (3,3)]):
-            left_display.addLayout(self.choice_layouts[folder], *position)
+            self.left_display.addLayout(self.choice_layouts[folder], *position)
         
-        # Bottom slider to change displayed frame
-        nframe_hbox = QHBoxLayout()
-        nframe_hbox.addWidget(QLabel("Frame:"))
-        self.nframe_edit = QLineEdit()
-        self.nframe_edit.setFocusPolicy(Qt.ClickFocus)
-        self.nframe_edit.setText(str(0))
-        self.nframe_edit.setMaxLength(4)
-        self.nframe_edit.setMaximumWidth(40)
-        self.nframe_edit.setValidator(QIntValidator(0, self.len_exp - 1))
-        self.nframe_edit.editingFinished.connect(
-                lambda: self.changeFrame(self.nframe_edit.text()))
-        nframe_hbox.addWidget(self.nframe_edit)
-        nframe_hbox.addStretch(1)
-        self.nframe_sld = QSlider(Qt.Horizontal)
-        self.nframe_sld.setFocusPolicy(Qt.ClickFocus)
-        self.nframe_sld.setTickInterval(100)
-        self.nframe_sld.setTickPosition(QSlider.TicksBothSides)
-        self.nframe_sld.setMinimum(0)
-        self.nframe_sld.setMaximum(self.len_exp - 1)
-        self.nframe_sld.valueChanged[int].connect(self.changeFrame)
-        nframe_hbox.addWidget(self.nframe_sld, stretch=9)
-        nframe_hbox.addStretch(1)
-        left_vbox.addLayout(nframe_hbox)
-        
-        
-        ## Right layout with buttons and actions
-        right_control = QVBoxLayout()
-        
-        right_control.addWidget(QLabel("Axon identity"), alignment=Qt.AlignCenter)
+        ## Right control with buttons and actions
         hbox = QHBoxLayout()
         hbox.addStretch(1)
         hbox.addWidget(self.canvas)
         hbox.addStretch(1)
-        right_control.addLayout(hbox)
         
-        right_control.addStretch(5)
         self.select_combo = QComboBox()
         self.select_combo.setFocusPolicy(Qt.ClickFocus)
         self.select_combo.addItems(["Choose output", "raw", "ccreg", "warped"])
@@ -167,26 +126,25 @@ class SelectionPage(PageWidget):
             self.select_combo.addItems(["final"])
         self.select_combo.setCurrentText("Choose output")
         self.select_combo.activated[str].connect(self.selectOutput)
-        right_control.addWidget(self.select_combo)
         self.select_btn = QPushButton("Select output")
+        self.select_btn.setToolTip("Select chosen output as final output")
         self.select_btn.clicked[bool].connect(self.saveFinalOutput)
         self.select_btn.setEnabled(False)
-        right_control.addWidget(self.select_btn)
         self.annotation_btn = QPushButton("Manual annotation")
         self.annotation_btn.setToolTip("Manual annotations are not implemented yet")
         self.annotation_btn.setEnabled(False)
-        right_control.addWidget(self.annotation_btn)
-        right_control.addStretch(1)
         
-        top_hbox.addLayout(left_vbox, stretch=1)
-        top_hbox.addLayout(right_control, stretch=0)
-        
-        self.setLayout(top_hbox)
+        self.right_control.addWidget(QLabel("Axon identity"), alignment=Qt.AlignCenter)
+        self.right_control.addLayout(hbox)
+        self.right_control.addStretch(5)
+        self.right_control.addWidget(self.select_combo)
+        self.right_control.addWidget(self.select_btn)
+        self.right_control.addWidget(self.annotation_btn)
+        self.right_control.addStretch(1)
     
     def changeFrame(self, num):
-        """Change the displayed frame to given num."""
-        self.nframe_edit.setText(str(num))
-        self.nframe_sld.setSliderPosition(int(num))
+        """Change the displayed frames to the given num."""
+        super().changeFrame(num)
         for folder in ["raw", "ccreg", "warped"]:
             self.roi_autos[folder].changeFrame(int(num))
             if isinstance(self.choice_widgets[folder], LabelImage):
@@ -203,7 +161,6 @@ class SelectionPage(PageWidget):
             if choice in ["model", "identities"]: # apply identity colormap
                 image = to_id_cmap(image, cmap=ID_CMAP, vmax=self.n_axons_max)
             
-            # If traces plots, put the widget in a scroll area
             if choice in ["ΔR/R", "ΔF/F"]:
                 self.choice_widgets[folder] = VerticalScrollImage(image)
             elif image.ndim == 2:
@@ -237,7 +194,10 @@ class SelectionPage(PageWidget):
         selection = self.select_combo.currentText()
         if selection != "final":
             for folder in ["axoid_internal", "GC6_auto", "ROI_auto"]:
+                destination = os.path.join(self.experiment, "output", folder, "final")
+                if os.path.isdir(destination):
+                    shutil.rmtree(destination)
                 shutil.copytree(os.path.join(self.experiment, "output", folder, selection),
-                                os.path.join(self.experiment, "output", folder, "final"))
+                                destination)
         # End of output selection, go to model correction page
         self.changedPage.emit(PAGE_MODEL)

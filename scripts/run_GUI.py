@@ -15,13 +15,22 @@ from PyQt5.QtWidgets import QApplication
 
 # Add parent folder to path in order to access `axoid`
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from axoid.GUI.constants import PAGE_MODEL
 from axoid.GUI.main import AxoIDWindow
 
 def main(args):
     """Initialize and start the GUI."""
+    if args.model:
+        if not os.path.isdir(os.path.join(args.experiment, "output",
+                                          "axoid_internal", "final")):
+            raise RuntimeError("cannot start on model correction page without final outputs")
+        goto = PAGE_MODEL
+    else:
+        goto = None
+    
     app = QApplication([])
     
-    window = AxoIDWindow(args.experiment)
+    window = AxoIDWindow(args.experiment, goto=goto)
     
     # Set the window to 0.9 * screen dimension while preserving its ratio
     screen = app.primaryScreen()
@@ -44,6 +53,11 @@ if __name__ == "__main__":
             'experiment',
             type=str,
             help="path to the experiment folder (excluding \"2Pimg/\")"
+    )
+    parser.add_argument(
+            '--model',
+            action="store_true",
+            help="start the GUI on the model correction page"
     )
     args = parser.parse_args()
     
