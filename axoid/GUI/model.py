@@ -107,25 +107,52 @@ class ModelPage(AxoidPage):
             self.left_display.addLayout(self.choice_layouts[folder], *position)
         
         ## Right control with buttons and actions
-        # Toolbox group
-        tool_vbox = QVBoxLayout()
-        tool_groupbox = QGroupBox("Tools")
-        self.tool_group = QButtonGroup()
-        tool_layout = QGridLayout()
-        for i, position in enumerate([(0,0), (0,1), (1,0), (1,1)]):
-            button = QPushButton("Tool %d" % i)
+        self.tool_buttongroup = QButtonGroup()
+        # General toolbox
+        general_vbox = QVBoxLayout()
+        general_subbox = QHBoxLayout()
+        general_groupbox = QGroupBox("General")
+        reset_btn = QPushButton("Reset model")
+        reset_btn.setToolTip("Reset the model to the one in the final/ folder")
+        undo_btn = QPushButton("Undo")
+        undo_btn.setToolTip("Undo the last action")
+        undo_btn.setShortcut("Ctrl+Z")
+        for button in [reset_btn, undo_btn]:
+            general_subbox.addWidget(button)
+        general_groupbox.setLayout(general_subbox)
+        general_vbox.addWidget(general_groupbox, alignment=Qt.AlignCenter)
+        general_vbox.addStretch(1)
+        # Identity modifications
+        ids_vbox = QVBoxLayout()
+        ids_subbox = QHBoxLayout()
+        ids_groupbox = QGroupBox("Identities")
+        fuse_btn = QPushButton("Fuse")
+        fuse_btn.setToolTip("Select two identities and fuse them into a single one")
+        discard_btn = QPushButton("Discard")
+        discard_btn.setToolTip("Discard (erase) the identity")
+        for button in [fuse_btn, discard_btn]:
             button.setCheckable(True)
-            tool_layout.addWidget(button, *position)
-            self.tool_group.addButton(button)
-        tool_groupbox.setLayout(tool_layout)
-        self.tool_group.buttonClicked[QAbstractButton].connect(self.changeTool)
-        tool_vbox.addWidget(tool_groupbox, alignment=Qt.AlignCenter)
-        tool_vbox.addStretch(1)
+            ids_subbox.addWidget(button)
+            self.tool_buttongroup.addButton(button)
+        ids_groupbox.setLayout(ids_subbox)
+        ids_vbox.addWidget(ids_groupbox, alignment=Qt.AlignCenter)
+        ids_vbox.addStretch(1)
+        # ROI cutting
+        cuts_vbox = QVBoxLayout()
+        cuts_subbox = QHBoxLayout()
+        cuts_groupbox = QGroupBox("Cutting")
+        drawcut_btn = QPushButton("Draw cut")
+        drawcut_btn.setToolTip("Draw a line representing a cut")
+        applycut_btn = QPushButton("Apply cut")
+        applycut_btn.setToolTip("Apply the drawn cut to the model")
+        for button in [drawcut_btn, applycut_btn]:
+            button.setCheckable(True)
+            cuts_subbox.addWidget(button)
+            self.tool_buttongroup.addButton(button)
+        cuts_groupbox.setLayout(cuts_subbox)
+        cuts_vbox.addWidget(cuts_groupbox, alignment=Qt.AlignCenter)
+        cuts_vbox.addStretch(1)
         
-        self.tool_actions = QVBoxLayout()
-        self.tool_actions_widget = QLabel()
-        self.tool_actions.addWidget(self.tool_actions_widget)
-        self.tool_actions.addStretch(1)
         
         # Apply/save/etc.
         fn_vbox = QVBoxLayout()
@@ -147,8 +174,9 @@ class ModelPage(AxoidPage):
         fn_vbox.addStretch(1)
         
         self.right_control.addStretch(1)
-        self.right_control.addLayout(tool_vbox, stretch=1.5)
-        self.right_control.addLayout(self.tool_actions, stretch=5)
+        self.right_control.addLayout(general_vbox, stretch=1.5)
+        self.right_control.addLayout(ids_vbox, stretch=1.5)
+        self.right_control.addLayout(cuts_vbox, stretch=5)
         self.right_control.addLayout(fn_vbox, stretch=2)
     
     def changeFrame(self, num):
@@ -186,19 +214,3 @@ class ModelPage(AxoidPage):
             
             self.choice_layouts[folder].addWidget(self.choice_widgets[folder],
                                                   alignment=Qt.AlignCenter)
-    
-    def changeTool(self, tool_btn):
-        """Change the available actions based on the selected tool."""
-        tool_groupbox = QGroupBox(tool_btn.text())
-        tool_groupbox.setAlignment(Qt.AlignCenter)
-        tool_group = QButtonGroup()
-        tool_layout = QVBoxLayout()
-        for i in range(int(tool_btn.text()[-1])):
-            button = QPushButton("%s: Tool %d" % (tool_btn.text(), i))
-            button.setCheckable(True)
-            tool_layout.addWidget(button)
-            tool_group.addButton(button)
-        tool_groupbox.setLayout(tool_layout)
-        self.tool_actions.replaceWidget(self.tool_actions_widget, tool_groupbox)
-        self.tool_actions_widget.close()
-        self.tool_actions_widget = tool_groupbox
