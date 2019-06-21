@@ -8,6 +8,7 @@ Created on Mon Oct  1 17:48:29 2018
 """
 
 import numpy as np
+from matplotlib import cm
 from skimage import io, color, measure
 
 
@@ -41,6 +42,17 @@ def to_npint(stack, dtype=np.uint8, float_scaling=None):
     else:
         stack_int = stack.astype(dtype)
     return stack_int
+
+def to_id_cmap(image, vmin=0.99, vmax=None):
+    """Apply the 'identity colormap' to the image."""
+    id_cmap = cm.get_cmap("viridis")
+    id_cmap.set_under([0,0,0])
+    if vmax is None:
+        vmax = image.max()
+    
+    out = image.astype(np.float)
+    out = id_cmap((out - 1) / (vmax - 1))[...,:-1]
+    return to_npint(out)
 
 def gray2red(image):
     """Create an RGB image with image in the red channel, and 0 in the others.
