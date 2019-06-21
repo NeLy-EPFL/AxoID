@@ -43,9 +43,9 @@ def to_npint(stack, dtype=np.uint8, float_scaling=None):
         stack_int = stack.astype(dtype)
     return stack_int
 
-def to_id_cmap(image, vmin=0.99, vmax=None):
+def to_id_cmap(image, cmap="viridis", vmin=0.99, vmax=None):
     """Apply the 'identity colormap' to the image."""
-    id_cmap = cm.get_cmap("viridis")
+    id_cmap = cm.get_cmap(cmap)
     id_cmap.set_under([0,0,0])
     if vmax is None:
         vmax = image.max()

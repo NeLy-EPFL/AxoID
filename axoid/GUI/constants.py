@@ -15,6 +15,7 @@ PAGE_SELECTION = 1      # output selection between raw/ccreg/warped
 PAGE_MODEL = 2          # correction of the model
 PAGE_CORRECTION = 3     # frame-wise correction
 PAGE_ANNOTATION = 4     # manual annotations
+
 # Paths to different data for display choices
 CHOICE_PATHS = {#"AVG_RGB": os.path.join("2Pimg"),
                 #"AVG_tdTom": os.path.join("2Pimg"),
@@ -27,3 +28,6 @@ CHOICE_PATHS = {#"AVG_RGB": os.path.join("2Pimg"),
                 "ROI_auto": os.path.join("output", "ROI_auto", "%s", "RGB_seg.tif"),
                 "ΔR/R": os.path.join("output", "GC6_auto", "%s", "ROIs_dRR.png"),
                 "ΔF/F": os.path.join("output", "GC6_auto", "%s", "ROIs_dFF.png")}
+
+# Colormap to use for displaying model and identities images
+ID_CMAP = "viridis"

@@ -9,6 +9,8 @@ Created on Wed Jun 19 11:48:44 2019
 @author: nicolas
 """
 
+from PyQt5.QtWidgets import QLabel, QHBoxLayout
+
 from .multipage import PageWidget
 
 
@@ -20,3 +22,4 @@ class ModelPage(PageWidget):
         super().__init__(*args, **kwargs)
         
         self.experiment = experiment
+        

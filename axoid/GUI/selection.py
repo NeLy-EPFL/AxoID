@@ -10,8 +10,13 @@ Created on Wed Jun 19 11:48:44 2019
 """
 
 import os.path
+import pickle
+import shutil
 
 import numpy as np
+from matplotlib import cm, colorbar
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from skimage import io
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIntValidator, QPixmap
@@ -19,7 +24,7 @@ from PyQt5.QtWidgets import (QHBoxLayout, QVBoxLayout, QGridLayout,
                              QPushButton, QLabel, QComboBox, QSlider, QSizePolicy,
                              QGroupBox, QLineEdit, QLayout, QScrollArea, QAbstractScrollArea)
 
-from .constants import CHOICE_PATHS
+from .constants import PAGE_MODEL, CHOICE_PATHS, ID_CMAP
 from .multipage import PageWidget
 from .image import LabelImage, LabelStack, VerticalScrollImage
 from axoid.utils.image import to_id_cmap
@@ -31,10 +36,18 @@ class SelectionPage(PageWidget):
     def __init__(self, experiment, *args, **kwargs):
         """Initialize the selection page."""
         super().__init__(*args, **kwargs)
-        
-        # Initialize experiment and image stacks
         self.experiment = experiment
+        
+        # Get max number of axons amongst outputs
         self.n_axons_max = -np.inf
+        for folder in ["raw", "ccreg", "warped"]:
+            with open(os.path.join(self.experiment, "output", "GC6_auto",
+                                   folder, "dRR_dic.p"), "rb") as f:
+                n_axons = len(pickle.load(f).keys())
+            if n_axons > self.n_axons_max:
+                self.n_axons_max = n_axons
+        
+        # Initialize images and stacks
         self.models = dict()
         self.roi_autos = dict()
         self.choice_layouts = dict()
@@ -42,10 +55,7 @@ class SelectionPage(PageWidget):
         for folder in ["raw", "ccreg", "warped"]:
             model_path = os.path.join(self.experiment, "output", "axoid_internal",
                                       folder, "model.tif")
-            model_img = io.imread(model_path)
-            if model_img.max() > self.n_axons_max:
-                self.n_axons_max = model_img.max()
-            model_img = to_id_cmap(model_img)
+            model_img = to_id_cmap(io.imread(model_path), cmap=ID_CMAP, vmax=self.n_axons_max)
             model_lbl = LabelImage(model_img)
             self.models.update({folder: model_lbl})
             
@@ -60,6 +70,15 @@ class SelectionPage(PageWidget):
             self.choice_layouts[folder].addWidget(self.choice_widgets[folder],
                                                   alignment=Qt.AlignCenter)
         self.len_exp = len(io.imread(roi_path))
+        # Get colorbar image
+        fig, ax = plt.subplots(1, 1, figsize=(0.5,3),
+                               facecolor=[1,1,1,0], constrained_layout=True)
+        cb = colorbar.ColorbarBase(ax, cmap=cm.get_cmap(ID_CMAP))
+        cb.ax.invert_yaxis()
+        cb.set_ticks(np.arange(self.n_axons_max) / (self.n_axons_max - 1))
+        cb.set_ticklabels(np.arange(self.n_axons_max))
+        self.canvas = FigureCanvas(fig)
+        self.canvas.setStyleSheet("background-color:transparent;")
         
         self.initUI()
     
@@ -133,16 +152,34 @@ class SelectionPage(PageWidget):
         ## Right layout with buttons and actions
         right_control = QVBoxLayout()
         
-        button1 = QPushButton("Do nothing")
-        button1.adjustSize()
-        right_control.addWidget(button1)
-        right_control.addStretch(1)
-        button2 = QPushButton("Do nothing2")
-        button2.adjustSize()
-        right_control.addWidget(button2)
+        right_control.addWidget(QLabel("Axon identity"), alignment=Qt.AlignCenter)
+        hbox = QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addWidget(self.canvas)
+        hbox.addStretch(1)
+        right_control.addLayout(hbox)
         
-        top_hbox.addLayout(left_vbox)
-        top_hbox.addLayout(right_control)
+        right_control.addStretch(5)
+        self.select_combo = QComboBox()
+        self.select_combo.setFocusPolicy(Qt.ClickFocus)
+        self.select_combo.addItems(["Choose output", "raw", "ccreg", "warped"])
+        if os.path.isdir(os.path.join(self.experiment, "output", "axoid_internal", "final")):
+            self.select_combo.addItems(["final"])
+        self.select_combo.setCurrentText("Choose output")
+        self.select_combo.activated[str].connect(self.selectOutput)
+        right_control.addWidget(self.select_combo)
+        self.select_btn = QPushButton("Select output")
+        self.select_btn.clicked[bool].connect(self.saveFinalOutput)
+        self.select_btn.setEnabled(False)
+        right_control.addWidget(self.select_btn)
+        self.annotation_btn = QPushButton("Manual annotation")
+        self.annotation_btn.setToolTip("Manual annotations are not implemented yet")
+        self.annotation_btn.setEnabled(False)
+        right_control.addWidget(self.annotation_btn)
+        right_control.addStretch(1)
+        
+        top_hbox.addLayout(left_vbox, stretch=1)
+        top_hbox.addLayout(right_control, stretch=0)
         
         self.setLayout(top_hbox)
     
@@ -164,7 +201,7 @@ class SelectionPage(PageWidget):
             path = os.path.join(self.experiment, CHOICE_PATHS[choice] % folder)
             image = io.imread(path)
             if choice in ["model", "identities"]: # apply identity colormap
-                image = to_id_cmap(image, vmax=self.n_axons_max)
+                image = to_id_cmap(image, cmap=ID_CMAP, vmax=self.n_axons_max)
             
             # If traces plots, put the widget in a scroll area
             if choice in ["ΔR/R", "ΔF/F"]:
@@ -182,3 +219,25 @@ class SelectionPage(PageWidget):
             
             self.choice_layouts[folder].addWidget(self.choice_widgets[folder],
                                                   alignment=Qt.AlignCenter)
+    
+    def selectOutput(self, selection):
+        """Enable or disable buttons based on output selection."""
+        if selection == "Choose output":
+            self.select_btn.setEnabled(False)
+            self.annotation_btn.setEnabled(False)
+        elif selection == "final":
+            self.select_btn.setEnabled(True)
+            self.annotation_btn.setEnabled(False)
+        else:
+            self.select_btn.setEnabled(True)
+            self.annotation_btn.setEnabled(False)  # not available as long as annotation is not implemented
+    
+    def saveFinalOutput(self, state):
+        """Save the selected output as the final output."""
+        selection = self.select_combo.currentText()
+        if selection != "final":
+            for folder in ["axoid_internal", "GC6_auto", "ROI_auto"]:
+                shutil.copytree(os.path.join(self.experiment, "output", folder, selection),
+                                os.path.join(self.experiment, "output", folder, "final"))
+        # End of output selection, go to model correction page
+        self.changedPage.emit(PAGE_MODEL)
