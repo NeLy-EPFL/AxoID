@@ -195,6 +195,15 @@ def get_data(args):
             print("warped_RGB.tif not found, copying warped data from results folder")
         wrp_input = wrp_fluo.copy()
     
+    # Save inputs to internal folder
+    outdir = os.path.join(args.experiment, "output", "axoid_internal")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", Warning)
+        io.imsave(os.path.join(outdir, "raw", "input.tif"), to_npint(rgb_input))
+        io.imsave(os.path.join(outdir, "ccreg", "input.tif"), to_npint(ccreg_input))
+        io.imsave(os.path.join(outdir, "warped", "input.tif"), to_npint(wrp_input))
+        io.imsave(os.path.join(outdir, "warped", "input_fluo.tif"), to_npint(wrp_fluo))
+    
     return rgb_input, ccreg_input, wrp_input, wrp_fluo
 
 
