@@ -36,7 +36,7 @@ from axoid.detection.deeplearning.test import predict_stack
 from axoid.tracking.model import InternalModel
 from axoid.tracking.utils import renumber_ids
 from axoid.utils.image import imread_to_float, to_npint, gray2red
-from axoid.utils.fluorescence import get_fluorophores, compute_fluorescence
+from axoid.utils.fluorescence import get_fluorophores, compute_fluorescence, save_fluorescence
 from axoid.utils.ccreg import register_stack
 # Command for optic flow warping through command line
 from motion_compensation_path import COMMAND as OFW_COMMAND
@@ -195,6 +195,15 @@ def get_data(args):
             print("warped_RGB.tif not found, copying warped data from results folder")
         wrp_input = wrp_fluo.copy()
     
+    # Save inputs to internal folder
+    outdir = os.path.join(args.experiment, "output", "axoid_internal")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", Warning)
+        io.imsave(os.path.join(outdir, "raw", "input.tif"), to_npint(rgb_input))
+        io.imsave(os.path.join(outdir, "ccreg", "input.tif"), to_npint(ccreg_input))
+        io.imsave(os.path.join(outdir, "warped", "input.tif"), to_npint(wrp_input))
+        io.imsave(os.path.join(outdir, "warped", "input_fluo.tif"), to_npint(wrp_fluo))
+    
     return rgb_input, ccreg_input, wrp_input, wrp_fluo
 
 
@@ -235,18 +244,18 @@ def detection(args, name, input_data, finetuning):
         seg_annot = segment_projection(annot_projection, min_area=MIN_AREA)
         
         # Save intermediate results
-        with open(os.path.join(outdir, "indices_ft.txt"), "w") as f:
+        with open(os.path.join(outdir, "indices_init.txt"), "w") as f:
             for idx in indices:
                 f.write(str(idx) + "\n")
         seg_annot_cut = segment_projection(annot_projection, min_area=MIN_AREA, 
                                            separation_border=True)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
-            io.imsave(os.path.join(outdir, "rgb_projection_ft.tif"), 
+            io.imsave(os.path.join(outdir, "rgb_init.tif"), 
                       to_npint(annot_projection))
-            io.imsave(os.path.join(outdir, "seg_projection_ft.tif"), 
+            io.imsave(os.path.join(outdir, "seg_init.tif"), 
                       to_npint(seg_annot))
-            io.imsave(os.path.join(outdir, "seg_projection_ft_cut.tif"), 
+            io.imsave(os.path.join(outdir, "seg_init_cut.tif"), 
                       to_npint(seg_annot_cut))
         
         # Make annotations out of the cluster
@@ -270,8 +279,7 @@ def detection(args, name, input_data, finetuning):
                 batch_size=BATCH_SIZE, learning_rate=LEARNING_RATE, verbose=args.verbose)
         if args.verbose and args.timeit:
             duration = time.time() - start
-            print("Fine tuning took %d min %d s." % (duration // 60, duration % 60))
-            
+            print("Fine tuning took %d min %d s." % (duration // 60, duration % 60))            
     
     # Predict the whole experiment
     if args.verbose and args.timeit and device.type == "cpu": # only time if predicting on cpu
@@ -324,7 +332,7 @@ def detection(args, name, input_data, finetuning):
         seg_init = segmentations[init_idx]
         
         # Save initialization frame
-        with open(os.path.join(outdir, "index_init.txt"), "w") as f:
+        with open(os.path.join(outdir, "indices_init.txt"), "w") as f:
             f.write(str(init_idx))
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
@@ -433,54 +441,8 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
         pickle.dump({"AllContours": contour_list}, f)
     
     # Save traces
-    def save_traces(traces, filename):
-        """Pickle and save the traces under filename.pkl."""
-        data_dic = {"ROI_" + str(i): traces[i] for i in range(len(traces))}
-        with open(os.path.join(args.experiment, "output", "GC6_auto", name, 
-                               filename + ".p"), "wb") as f:
-            pickle.dump(data_dic, f)
-    save_traces(tdtom, "tdTom_abs_dic")
-    save_traces(gcamp, "GC_abs_dic")
-    save_traces(dFF, "dFF_dic")
-    save_traces(dRR, "dRR_dic")
-    
-    # Save plots of the traces
-    def plot_traces(traces, filename, ylabel, ylim=None):
-        """Make a plot of the fluorescence traces."""
-        color="forestgreen"
-        if ylim is not None:
-            ymin, ymax = ylim
-        else:
-            ymin = min(0, np.nanmin(traces[:, 1:]) - 0.05 * np.abs(np.nanmin(traces[:, 1:])))
-            ymax = np.nanmax(traces[:, 1:]) * 1.05
-        
-        fig = plt.figure(figsize=(8, 4 * len(traces)), facecolor='white', dpi=300)
-        fig.subplots_adjust(left=0.2, right = 0.9, wspace = 0.3, hspace = 0.3)
-        
-        for i in range(len(traces)):
-            ax = plt.subplot(len(traces), 1, i+1)
-            plt.axhline(linestyle='dashed', color='gray', linewidth=0.5)
-            plt.plot(traces[i], color, linewidth=1)
-            plt.xlim(0, 1.05*(len(traces[i]) - 1))
-            plt.ylabel("ROI#%d\n" % i + ylabel, size=10, color=color)
-            plt.ylim(ymin, ymax)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            if i < len(traces) - 1:
-                ax.spines['bottom'].set_visible(False)
-                ax.get_xaxis().set_visible(False)
-            else:
-                plt.xlabel("Frame", size=10)
-                
-        fig.savefig(os.path.join(args.experiment, "output", "GC6_auto", name, 
-                                 filename + ".png"),
-                    bbox_inches='tight', facecolor=fig.get_facecolor(),
-                    edgecolor='none', transparent=True)
-    
-    plot_traces(tdtom, "ROIS_tdTom", ylabel="F", ylim=(-0.05, 1.05))
-    plot_traces(gcamp, "ROIS_GC", ylabel="F", ylim=(-0.05, 1.05))
-    plot_traces(dFF, "ROIs_dFF", ylabel="$\Delta$F/F (%)")
-    plot_traces(dRR, "ROIs_dRR", ylabel="$\Delta$R/R (%)")
+    save_fluorescence(os.path.join(args.experiment, "output", "GC6_auto", name),
+                      tdtom, gcamp, dFF, dRR)
 
 
 def process(args, name, input_data, fluo_data=None, finetuning=True):

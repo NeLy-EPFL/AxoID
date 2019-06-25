@@ -7,9 +7,12 @@ Created on Thu Jun  6 14:49:55 2019
 @author: nicolas
 """
 
+import os.path
 import warnings
+import pickle
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def get_fluorophores(rgb_stack, identities):
@@ -105,3 +108,52 @@ def compute_fluorescence(tdtom, gcamp, len_baseline):
         dRR[n] = (R_t - R_0) / R_0 * 100
     
     return dFF, dRR
+
+def save_fluorescence(path, tdtom, gcamp, dFF, dRR):
+    """Save the fluorescence traces in the experiment folder."""
+    # Save traces
+    def save_traces(traces, filename):
+        """Pickle and save the traces under filename.pkl."""
+        data_dic = {"ROI_" + str(i): traces[i] for i in range(len(traces))}
+        with open(os.path.join(path, filename + ".p"), "wb") as f:
+            pickle.dump(data_dic, f)
+    save_traces(tdtom, "tdTom_abs_dic")
+    save_traces(gcamp, "GC_abs_dic")
+    save_traces(dFF, "dFF_dic")
+    save_traces(dRR, "dRR_dic")        
+    # Save plots of the traces
+    def plot_traces(traces, filename, ylabel, ylim=None):
+        """Make a plot of the fluorescence traces."""
+        color="forestgreen"
+        if ylim is not None:
+            ymin, ymax = ylim
+        else:
+            ymin = min(0, np.nanmin(traces[:, 1:]) - 0.05 * np.abs(np.nanmin(traces[:, 1:])))
+            ymax = np.nanmax(traces[:, 1:]) * 1.05
+        
+        fig = plt.figure(figsize=(8, 4 * len(traces)), facecolor='white', dpi=300)
+        fig.subplots_adjust(left=0.2, right = 0.9, wspace = 0.3, hspace = 0.3)
+        
+        for i in range(len(traces)):
+            ax = plt.subplot(len(traces), 1, i+1)
+            plt.axhline(linestyle='dashed', color='gray', linewidth=0.5)
+            plt.plot(traces[i], color, linewidth=1)
+            plt.xlim(0, 1.05*(len(traces[i]) - 1))
+            plt.ylabel("ROI#%d\n" % i + ylabel, size=10, color=color)
+            plt.ylim(ymin, ymax)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            if i < len(traces) - 1:
+                ax.spines['bottom'].set_visible(False)
+                ax.get_xaxis().set_visible(False)
+            else:
+                plt.xlabel("Frame", size=10)
+                
+        fig.savefig(os.path.join(path, filename + ".png"),
+                    bbox_inches='tight', facecolor=fig.get_facecolor(),
+                    edgecolor='none', transparent=True)
+    
+    plot_traces(tdtom, "ROIS_tdTom", ylabel="F", ylim=(-0.05, 1.05))
+    plot_traces(gcamp, "ROIS_GC", ylabel="F", ylim=(-0.05, 1.05))
+    plot_traces(dFF, "ROIs_dFF", ylabel="$\Delta$F/F (%)")
+    plot_traces(dRR, "ROIs_dRR", ylabel="$\Delta$R/R (%)")

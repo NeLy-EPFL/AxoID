@@ -148,10 +148,11 @@ def get_cut_pixels(n, d, roi_img):
     y = coords @ n > d
     return coords[y].astype(np.uint16)
 
-def apply_cuts(cuts, model, identities):
+def apply_cuts(cuts, model, identities=None):
     """Apply the cuts to the ROIs of the model image and all identity frames."""
     new_model_image = model.image.copy()
-    new_identities = identities.copy()
+    if identities is not None:
+        new_identities = identities.copy()
     
     # Create new ids for ROIs created after the cut
     new_ids = dict([(axon.id, []) for axon in model.axons])
@@ -174,12 +175,16 @@ def apply_cuts(cuts, model, identities):
             new_model_image[new_coords[:,0], new_coords[:,1]] = new_ids[axon.id][j]
         
         # Cut the identity frames
-        for k in range(len(identities)):
-            roi_img = identities[k] == axon.id
-            if np.sum(roi_img) == 0:
-                continue            
-            for j, (n, d) in enumerate(cuts[axon.id]):
-                new_coords = get_cut_pixels(n, d, roi_img)
-                new_identities[k, new_coords[:,0], new_coords[:,1]] = new_ids[axon.id][j]
+        if identities is not None:
+            for k in range(len(identities)):
+                roi_img = identities[k] == axon.id
+                if np.sum(roi_img) == 0:
+                    continue            
+                for j, (n, d) in enumerate(cuts[axon.id]):
+                    new_coords = get_cut_pixels(n, d, roi_img)
+                    new_identities[k, new_coords[:,0], new_coords[:,1]] = new_ids[axon.id][j]
     
-    return new_model_image, new_identities
+    if identities is None:
+        return new_model_image
+    else:
+        return new_model_image, new_identities

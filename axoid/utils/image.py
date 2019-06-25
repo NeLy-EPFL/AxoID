@@ -8,6 +8,7 @@ Created on Mon Oct  1 17:48:29 2018
 """
 
 import numpy as np
+from matplotlib import cm
 from skimage import io, color, measure
 
 
@@ -42,6 +43,17 @@ def to_npint(stack, dtype=np.uint8, float_scaling=None):
         stack_int = stack.astype(dtype)
     return stack_int
 
+def to_id_cmap(image, cmap="viridis", vmin=0.99, vmax=None):
+    """Apply the 'identity colormap' to the image."""
+    id_cmap = cm.get_cmap(cmap)
+    id_cmap.set_under([0,0,0])
+    if vmax is None:
+        vmax = image.max()
+    
+    out = image.astype(np.float)
+    out = id_cmap((out - vmin) / (vmax - vmin))[...,:-1]
+    return to_npint(out)
+
 def gray2red(image):
     """Create an RGB image with image in the red channel, and 0 in the others.
     /!\ It does not check for grayscale images in order to work with stacks!"""
@@ -70,7 +82,7 @@ def overlay_mask(image, mask, opacity=0.25, mask_color=[1.0, 0.0, 0.0], rescale_
         
     overlay[mask.astype(np.bool), :] *= 1 - opacity
     overlay[mask.astype(np.bool), :] += mask_color * opacity
-    return overlay
+    return overlay.astype(image.dtype)
 
 def overlay_mask_stack(stack, mask, opacity=0.25, mask_color=[1.0, 0.0, 0.0], rescale_img=False):
     """Merge the mask as an overlay over the stack."""
@@ -84,7 +96,7 @@ def overlay_mask_stack(stack, mask, opacity=0.25, mask_color=[1.0, 0.0, 0.0], re
     for i in range(len(stack)):
         overlay[i] = overlay_mask(overlay[i], mask[i], opacity=opacity, 
                mask_color=mask_color, rescale_img=rescale_img)
-    return overlay
+    return overlay.astype(stack.dtype)
 
 def overlay_preds_targets(predictions, targets, masks=None):
     """Create an image with prediction and target (and mask) for easy comparison."""
