@@ -17,50 +17,52 @@ import torch
 def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metrics=None,
           criterion_metric=None, model_dir=None, replace_dir=True, verbose=1):
     """
-    Train the model, and return the best found, as well as the training history.
+    Train the model and return the best found, as well as the training history.
     
-    Args:
-        model: PyTorch model
-            The model, based on Torch.nn.Module. It should have a `device` 
-            attribute.
-        dataloaders: dict of dataloaders
-            Contains the train and validation DataLoaders with respective keys 
-            "train" and "valid".
-        loss_fn: callable
-            The PyTorch loss function. It should take 3 tensors as input
-            (predictions, targets, and masks), and output a scalar tensor
-        optimizer: PyTorch optimizer
-            Optimzer for the SGD algorithm.
-        n_epochs: int
-            Number of epochs (pass over the whole data).
-        scheduler: PyTorch lr_scheduler (default = None)
-            Learning rate decay scheduler for the given optimizer. If None,
-            no schedule is applied
-        metrics: dict of callable (default = None)
-            Dictionary of metrics to be computed over the data. It should take 
-            3 tensors as input (predictions, targets, and masks), and output a 
-            scalar tensor. Keys should be their name, value the callable.
-        criterion_metric: str (default = None)
-            Name of the metric to use for early stopping. If None, no early
-            stopping occurs, and the last model is return as best found.
-            It can be "loss", in this case, it is based on the highest negative
-            loss. Otherwise, it should be the same as the key in the `metrics` 
-            dictionary. Note that it is automatically based on the validation set.
-        model_dir: str (default = None)
-            Directory/path of the folder in which the best model is saved.
-            If None, the model won't be saved.
-        replace_dir: bool (default = True)
-            If True and model_dir is already existing, it will be over-written.
-        verbose: int (default = 1)
-            Verbosity of the function (0 means silent).
+    Parameters
+    ----------
+    model : PyTorch model
+        The model, based on Torch.nn.Module. It should have a `device` 
+        attribute.
+    dataloaders : dict of dataloaders
+        Contains the train and validation DataLoaders with respective keys 
+        "train" and "valid".
+    loss_fn : callable
+        The PyTorch loss function. It should take 3 tensors as input
+        (predictions, targets, and masks), and output a scalar tensor
+    optimizer : PyTorch optimizer
+        Optimzer for the SGD algorithm.
+    n_epochs : int
+        Number of epochs (pass over the whole data).
+    scheduler : PyTorch lr_scheduler (default = None)
+        Learning rate decay scheduler for the given optimizer. If None,
+        no schedule is applied
+    metrics : dict of callable (default = None)
+        Dictionary of metrics to be computed over the data. It should take 
+        3 tensors as input (predictions, targets, and masks), and output a 
+        scalar tensor. Keys should be their name, value the callable.
+    criterion_metric : str (default = None)
+        Name of the metric to use for early stopping. If None, no early
+        stopping occurs, and the last model is return as best found.
+        It can be "loss", in this case, it is based on the highest negative
+        loss. Otherwise, it should be the same as the key in the `metrics` 
+        dictionary. Note that it is automatically based on the validation set.
+    model_dir : str (default = None)
+        Directory/path of the folder in which the best model is saved.
+        If None, the model won't be saved.
+    replace_dir : bool (default = True)
+        If True and model_dir is already existing, it will be over-written.
+    verbose : int (default = 1)
+        Verbosity of the function (0 means silent).
     
-    Returns:
-        best_model: PyTorch model
-            The best model found, i.e. corresponding to the epoch where the 
-            validation metrics[criterion_metric] (or negative loss) is the highest.
-        history: dict
-            Dictionary with the training history. Validation keys are like 
-            their training counterparts, with the prefix "val_".
+    Returns
+    -------
+    best_model : PyTorch model
+        The best model found, i.e. corresponding to the epoch where the 
+        validation metrics[criterion_metric] (or negative loss) is the highest.
+    history : dict
+        Dictionary with the training history. Validation keys are like 
+        their training counterparts, with the prefix "val_".
     """
     if criterion_metric is not None:
         best_val_criterion = -np.inf
@@ -220,7 +222,26 @@ def train(model, dataloaders, loss_fn, optimizer, n_epochs, scheduler=None, metr
 
 
 def train_plot(history, crop_dice=False, scale_crop=4.0):
-    """Return a figure of the training history."""
+    """
+    Return a figure of the training history.
+    
+    Parameters
+    ----------
+    history : dict
+        Dictionary with the training history. Validation keys are like 
+        their training counterparts, with the prefix "val_".
+    crop_dice : bool (default = False)
+        If True, assumes the crop dice coefficient metric was computed, and 
+        will therefore try to plot it.
+    scale_crop : float (4)
+        If crop_dice, this is the scaling parameter of the crop. This is only 
+        used for titles and axis labels.
+    
+    Returns
+    -------
+    fig : matplotlib.pyplot figure
+        The training figure object. Can be showed or saved by the user.
+    """
     fig = plt.figure(figsize=(8,6))
     plt.subplot(121)
     plt.title("Loss")

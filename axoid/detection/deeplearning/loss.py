@@ -13,12 +13,27 @@ import torch
 def get_BCEWithLogits_loss(reduction='mean', 
                            pos_weight=1, neg_weight=1):
     """
-    Return a loss function that computes the binary cross entropy with logits,
-    with pixel-wise weighting.
+    Return a loss function computing the binary cross-entropy on logits, with weighting.
     
     The weights in the ROIs are constant and equal to pos_weight.
     The ones in the background are set to neg_weight + (pos_weight - neg_weight) * weight,
     where weight is the weighting mask (if inexistent, is set to 0).
+    
+    Parameters
+    ----------
+    reduction : str (default = 'mean')
+        Reduction scheme for the loss, see PyTorch documentation for details.
+        Briefly, 'mean' return the average loss of the batch element.
+    pos_weight : float (default = 1)
+        Weight of the positive pixels (foreground).
+    neg_weight : float (default = 1)
+        Weight of the negative pixels (background).
+    
+    Returns
+    -------
+    loss_fn : callable
+        Loss function taking as input prediction, target (and weight), returning
+        their average loss.
     """
     # Create the loss function
     def loss_fn(prediction, target, weight=None):

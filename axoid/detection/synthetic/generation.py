@@ -43,7 +43,28 @@ with open(os.path.join(os.path.dirname(__file__), "GCaMP_kernel.pkl"), "rb") as 
 
 
 def create_neurons(n_neurons, shape, return_label):
-    """Return gaussian and segmentation images corresponding to neurons."""
+    """
+    Return gaussian and segmentation images corresponding to neurons.
+    
+    Parameters
+    ----------
+    n_neurons : int
+        Number of neurons to be present on the stack.
+    shape : tuple of int
+        Tuple (height, width) representing the shape of the images.
+    return_label : bool (default = False)
+        If True, synth_seg will be the labels of the neurons instead of just
+        their binary segmentations.
+    
+    Returns
+    -------
+    gaussians : ndarray
+        Stack of images, where one image has one gaussian corresponding to one
+        neuron.
+    neuron_segs : ndarray
+        Stack of binary images, which corresponds to the detection of these
+        neurons. Will be used as ground truths for deep learning.
+    """
     ellipse_size = 1.5 # factor for the ground truth ellipse (normalized by std)
     # Meshgrid for the gaussian weights
     rows, cols = np.arange(shape[0]), np.arange(shape[1])
@@ -96,7 +117,26 @@ def create_neurons(n_neurons, shape, return_label):
 
 
 def get_flurophores(n_neurons, n_images, gcamp_type):
-    """Return the tdTomato level, and GCaMP dynamics."""
+    """
+    Return the tdTomato level, and GCaMP dynamics.
+    
+    Parameters
+    ----------
+    n_neurons : int
+        Number of neurons to be present on the stack.
+    n_images : int
+        Number of images in the stack.
+    gcamp_type : str
+        Type of GCaMP fluorophore to simulate, "6s" or "6f".
+    
+    Returns
+    -------
+    tdTom_max : ndarray
+        Array of the maximum intensity of tdTomato for each neuron.
+    gcamp_dynamics : ndarray
+        Array of the maximum intensity of GCaMP for each neuron and each frame.
+        This is to simulate dynamics of neural activations.
+    """
     fps = 2.4 # synthetic frame per seconds
     # Choose which fluorophores are expressed for each neuron
     c_presence = np.array([[True, True], [True, False], [False, True]], dtype=np.bool)
@@ -150,7 +190,29 @@ def get_flurophores(n_neurons, n_images, gcamp_type):
 
 
 def deform_neurons(n_neurons, shape, gaussians, neuron_segs):
-    """Deform neurons and segmentation like the real acquisition system."""
+    """
+    Deform neurons and segmentation like the real acquisition system.
+    
+    Parameters
+    ----------
+    n_neurons : int
+        Number of neurons to be present on the stack.
+    shape : tuple of int
+        Tuple (height, width) representing the shape of the images.
+    gaussians : ndarray
+        Stack of images, where one image has one gaussian corresponding to one
+        neuron.
+    neuron_segs : ndarray
+        Stack of binary images, which corresponds to the detection of these
+        neurons. Will be used as ground truths for deep learning.
+    
+    Returns
+    -------
+    wrp_gaussian : ndarray
+        Like gaussian, except they have been deformed.
+    wrp_seg : ndarray
+        Binary images corresponding to wrp_gaussian detections.
+    """
     # For warping (like acquisition process):
     k_s = 50 # size of kernel for smoothing translations (in number of rows)
     n_r = 0.5 # number of rows after which the standard deviation of the translations are 1
@@ -196,7 +258,36 @@ def deform_neurons(n_neurons, shape, gaussians, neuron_segs):
 
 def sample_neurons(i, n_neurons, shape, n_samples, wrp_gaussian, wrp_seg,
                    tdTom_max, gcamp_dynamics, laser_gain):
-    """Sample from the gaussians defining neurons for frame `i`."""
+    """
+    Sample from the gaussians defining neurons for frame `i`.
+    
+    Parameters
+    ----------
+    i : int
+        Time index of the frame which is being sampled.
+    n_neurons : int
+        Number of neurons to be present on the stack.
+    shape : tuple of int
+        Tuple (height, width) representing the shape of the images.
+    n_samples : int
+        Parameter over the number of samples to draw to get pixelated neurons.
+    wrp_gaussian : ndarray
+        Like gaussian, except they have been deformed.
+    wrp_seg : ndarray
+        Binary images corresponding to wrp_gaussian detections.
+    tdTom_max : ndarray
+        Array of the maximum intensity of tdTomato for each neuron.
+    gcamp_dynamics : ndarray
+        Array of the maximum intensity of GCaMP for each neuron and each frame.
+        This is to simulate dynamics of neural activations.
+    laser_gain : float
+        Fake laser gain, from 0 to 1 (min to max).
+    
+    Returns
+    -------
+    wrp_neuron : ndarray
+        RGB image corresponding to synthetic fluorophore signals from the neurons.
+    """
     wrp_neuron = np.zeros(shape + (3,), dtype=wrp_gaussian.dtype)
     for j in range(n_neurons):
         # Only sample if neuron is in image
@@ -244,7 +335,24 @@ def sample_neurons(i, n_neurons, shape, n_samples, wrp_gaussian, wrp_seg,
 
 
 def reduce_with_border(wrp_seg, return_label):
-    """Reduce the segmentation to one image, while making sure ROIs are separated."""
+    """
+    Reduce the segmentation to one image, while making sure ROIs are separated.
+    
+    Parameters
+    ----------
+    wrp_seg : ndarray
+        Stack of binary images corresponding to their ROI, or label.
+    return_label : bool (default = False)
+        If True, synth_seg will be the labels of the neurons instead of just
+        their binary segmentations.
+    
+    Returns
+    -------
+    wrp_seg : ndarray
+        Single binary images corresponding the to projection of input wrp_seg,
+        but with potential separation border (with background pixels) between
+        ROI that are touching.
+    """
     # Compute number of neurons inside the frame
     n_neurons = 0
     for j in range(wrp_seg.shape[0]):
@@ -285,7 +393,45 @@ def reduce_with_border(wrp_seg, return_label):
 
 def warp_neurons(n_images, n_neurons, shape, gaussians, neuron_segs, return_label,
                  tdTom_max, gcamp_dynamics, laser_gain, cyan_gcamp):
-    """Return the warped and sampled neurons and segmentations."""
+    """
+    Return the warped and sampled neurons and segmentations.
+    
+    Parameters
+    ----------
+    n_images : int
+        Number of images in the stack.
+    n_neurons : int
+        Number of neurons to be present on the stack.
+    shape : tuple of int
+        Tuple (height, width) representing the shape of the images.
+    gaussians : ndarray
+        Stack of images, where one image has one gaussian corresponding to one
+        neuron.
+    neuron_segs : ndarray
+        Stack of binary images, which corresponds to the detection of these
+        neurons. Will be used as ground truths for deep learning.
+    return_label : bool (default = False)
+        If True, synth_seg will be the labels of the neurons instead of just
+        their binary segmentations.
+    tdTom_max : ndarray
+        Array of the maximum intensity of tdTomato for each neuron.
+    gcamp_dynamics : ndarray
+        Array of the maximum intensity of GCaMP for each neuron and each frame.
+        This is to simulate dynamics of neural activations.
+    laser_gain : float
+        Fake laser gain, from 0 to 1 (min to max).
+    cyan_gcamp : bool (default = False)
+        If True, the GCaMP will appear cyan (same in green and blue channel).
+        Else, it will be green (0 in blue channel).
+    
+    Returns
+    -------
+    wrp_neurons : ndarray
+        Stack of RGB images of synthetic tdTomato and GCaMP signals of warped
+        neurons.
+    wrp_segs : ndarray
+        Stack of binary images corresponding to their ROI, or label.
+    """
     # Number of samples for each neuron (empirically tuned)
     n_samples = np.random.normal(loc=1000, scale=200, size=n_neurons * 2).reshape([-1, 2])
     n_samples = (n_samples + 0.5).astype(np.uint16)
@@ -311,7 +457,26 @@ def warp_neurons(n_images, n_neurons, shape, gaussians, neuron_segs, return_labe
 
 
 def create_noise(n_images, shape, laser_gain, cyan_gcamp):
-    """Create noisy background for all frames."""
+    """
+    Create noisy background for all frames.
+    
+    Parameters
+    ----------
+    n_images : int
+        Number of images in the stack.
+    shape : tuple of int
+        Tuple (height, width) representing the shape of the images.
+    laser_gain : float
+        Fake laser gain, from 0 to 1 (min to max).
+    cyan_gcamp : bool (default = False)
+        If True, the GCaMP will appear cyan (same in green and blue channel).
+        Else, it will be green (0 in blue channel).
+    
+    Returns
+    -------
+    noise : ndarray
+        Stack of RGB images with only the noise.
+    """
     if laser_gain < _GAIN_T: # low gain, no saturation
         noise_means = np.array([_BKG_MEAN_R * (1 - laser_gain) + 0.14 * laser_gain,
                                 _BKG_MEAN_G * (1 - laser_gain) + 0.13 * laser_gain])
@@ -346,30 +511,32 @@ def create_noise(n_images, shape, laser_gain, cyan_gcamp):
     
     return noise
 
-
+## This is the main function
 def synthetic_stack(shape, n_images, n_neurons, cyan_gcamp=False, return_label=False):
     """
     Return a stack of synthetic neural images.
     
-    Args:
-        shape: tuple of int
-            Tuple (height, width) representing the shape of the images.
-        n_images: int
-            Number of images in the stack.
-        n_neurons: int
-            Number of neurons to be present on the stack.
-        cyan_gcamp: bool (default = False)
-            If True, the GCaMP will appear cyan (same in green and blue channel).
-            Else, it will be green.
-        return_label: bool (default = False)
-            If True, synth_seg will be the labels of the neurons instead of just
-            their segmentations.
+    Parameters
+    ----------
+    shape : tuple of int
+        Tuple (height, width) representing the shape of the images.
+    n_images : int
+        Number of images in the stack.
+    n_neurons : int
+        Number of neurons to be present on the stack.
+    cyan_gcamp : bool (default = False)
+        If True, the GCaMP will appear cyan (same in green and blue channel).
+        Else, it will be green (0 in blue channel).
+    return_label : bool (default = False)
+        If True, synth_seg will be the labels of the neurons instead of just
+        their binary segmentations.
             
-    Returns:
-        synth_stack: ndarray of shape NxHxWx3
-            Stack of N synthetic images.
-        synth_seg: ndarray of shape NxHxW
-            Stack of N synthetic segmentations (or label, see `return_label`).
+    Returns
+    -------
+    synth_stack : ndarray
+        Stack of N synthetic images.
+    synth_seg : ndarray
+        Stack of N synthetic segmentations (or labels, see `return_label`).
     """ 
     ## Initialization
     # GCaMP type (50% 6f and 50% 6s)

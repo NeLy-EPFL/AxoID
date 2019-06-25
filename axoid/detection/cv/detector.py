@@ -19,11 +19,41 @@ from axoid.utils.processing import nlm_denoising
 
 def cv_detect(rgb_stack, h_red=11, h_green=11, sigma_gauss=2,
               thresholding_fn=filters.threshold_otsu, 
-              registration=False, selem=disk(1)):
-    """Use computer vision to detect ROI in given RGB stack."""
-    min_area = 6 # minimum area in pixel for an ROI
+              registration=False, selem=disk(1), min_area = 6):
+    """
+    Use computer vision to detect ROI in given RGB stack.
     
+    It first denoised the frames. Results is smoothed and then segmented by
+    thresholding. Finally, an erosion is applied, followed by discarding small
+    elements.
     
+    Parameters
+    ----------
+    rgb_stack : ndarray
+        Stack of RGB images where the first dimension is the time.
+    h_red : int (default = 11)
+        Parameter regulating the strength of the denoising in the red channel.
+        See OpenCV documentation for more detail.
+    h_green : int (default = 11)
+        Parameter regulating the strength of the denoising in the green channel.
+        See OpenCV documentation for more detail.
+    sigma_gauss : float (default = 2)
+        Sigma of the gaussian kernel for the smoothing.
+    thresholding_fn : callable (default = threshold_otsu)
+        Thresholding function for the segmentation. It should return a single value.
+    registration : bool (default = False)
+        If True, rgb_stack will be cross-correlation registered prior to denoising.
+        Note that the return denoised stack will not be registered.
+    selem : ndarray (default = disk(1))
+        Array representing a pixel neighbourhood, for the morphological erosion.
+    min_area : int (default = 6)
+        ROI with an area under this value (in pixel) are discarded.
+    
+    Returns
+    -------
+    output : ndarray
+        The binary detection array.
+    """    
     stack = to_npint(rgb_stack)
     if registration:
         stack, reg_rows, reg_cols = register_stack(stack, channels=[0,1], return_shifts=True)

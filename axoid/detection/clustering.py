@@ -19,7 +19,25 @@ from axoid.utils.processing import fuse_small_objects
 
 
 def segment_projection(projection, min_area=None, separation_border=False):
-    """Segment the ROIs of a projection image."""
+    """
+    Segment the ROIs of a projection image.
+    
+    Parameters
+    ----------
+    projection: ndarray
+        RGB image corresponding to a average of multiple RGB frames. Therefore,
+        it is expected to be blurry and with lower noise.
+    min_area : int (optional)
+        Minimum area in pixel under which an ROI is discarded.
+    separation_border : bool (default = False)
+        If True, will look for local maxima to divide ROI using watershed (thus
+        creating 'separation border' between touching ROIs).
+     
+    Returns
+    -------
+    seg_projection : ndarray
+        Binary segmentation of the ROIs of projection.
+    """
     # Binary segmentation by local thersholding
     bin_projection = rg2gray(projection)
     bin_projection = bin_projection > filters.threshold_local(bin_projection, 25, offset=-0.05)
@@ -63,7 +81,25 @@ def segment_projection(projection, min_area=None, separation_border=False):
 
 
 def crosscorr_matrix(stack, normalize=True, only_tdtom=True, keep_diag=False):
-    """Return the cross-correlation matrix of the stack images."""
+    """
+    Return the cross-correlation matrix of the stack images.
+    
+    Parameters
+    ----------
+    stack : ndarray
+        Stack of RGB images to use for computing the matrix.
+    normalize : bool (default = True)
+        If True, each frame will be normalized individually as (img - mean) / std.
+    only_tdtom : bool (default = True)
+        If True, only the tdTomato channel (red) is used for cross-correlation.
+    keep_diag : bool (default = False)
+        If False, the diagonal element will be set to NaNs.
+    
+    Returns
+    -------
+    cc_matrix : ndarray
+        Matrix of cross-correlation between the frames.
+    """
     # Normalize the images and discard last channel (blue)
     if normalize:
         images = (stack - stack.mean((1,2), keepdims=True)) / stack.std((1,2), keepdims=True)
@@ -88,7 +124,25 @@ def crosscorr_matrix(stack, normalize=True, only_tdtom=True, keep_diag=False):
     return cc_matrix
 
 def cluster_matrix(matrix):
-    """Return the labels of the clustered similarity matrix."""
+    """
+    Return the labels of the clustered similarity matrix.
+    
+    Similarity is first transformed into distance as [min, max] --> [max, min]
+    This uses the OPTICS clustering algorithm with maximum epsilon set as half 
+    the median distance.
+    
+    Parameters
+    ----------
+    matrix : ndarray
+        Matrix where element (i,j) is thought of as the similarity between the 
+        object i and j. The diagonal element are not taken into account.
+    
+    Returns
+    -------
+    labels : ndarray
+        1D array with the labels of each element, corresponding to the cluster
+        assignment. -1 corresponds to outliers.
+    """
     # Set nan to 0 to avoid problem in clustering
     dist = np.nan_to_num(matrix)
     # Transform similarity matrix in distance matrix by inverting similarity
@@ -101,14 +155,45 @@ def cluster_matrix(matrix):
     return labels
 
 def cluster_crosscorr(matrix, labels, cluster_label):
-    """Return the average cross-correlation of the cluster frames."""
+    """
+    Return the average cross-correlation of the cluster frames.
+    
+    Parameters
+    ----------
+    matrix : ndarray
+        Matrix of cross-correlation, where diagonal element should be Nans.
+    labels : ndarray
+        1D array of the cluster assignments of each element.
+    cluster_label : int
+        Label of the cluster in which the average is computed.
+    
+    Returns
+    -------
+    mean_cc : float
+        Average cross-correlation between the element of cluster_label.
+    """
     idx_cluster = np.where(labels == cluster_label)[0]
     submatrix = matrix[idx_cluster][:, idx_cluster]
     mean_cc = np.nanmean(submatrix)
     return mean_cc
 
 def similar_frames(stack):
-    """Return the indices of the most similar frames (in the cross-correlation sense)."""
+    """
+    Return the indices of the most similar frames (in the cross-correlation sense).
+    
+    It compute the cross-correlation amongst the frames, cluster them based on
+    this, and then find the cluster with the highest average cross-correlation.
+    
+    Parameters
+    ----------
+    stack: ndarray
+        Stack of RGB images from which to find similar frames.
+    
+    Returns
+    -------
+    indices : ndarray
+        Array containing the indices of the similar frames.
+    """
     # Compute the cross-correlation matrix
     cc_matrix = crosscorr_matrix(stack)
     

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Module containing useful functions for testing with PyTorch.
+Module containing useful functions for testing models on data with PyTorch.
 Created on Thu Oct 25 16:09:50 2018
 
 @author: nicolas
@@ -16,10 +16,25 @@ from axoid.utils.image import imread_to_float, overlay_preds_targets
 
 
 def predict(model, dataloader, discard_target=True):
-    """Output predictions for the given dataloader and model.
+    """
+    Return predictions for the given dataloader and model.
     
-    `discard_target` can be used if the dataloader return batches as 
-    (inputs, targets, ...) tuples."""
+    Parameters
+    ----------
+    model : pytorch model
+        The model which will be used to make the predictions.
+    dataloader : pytorch dataloader
+        Dataloader returning batches of inputs.
+    discard_target : bool (default = True)
+        If True, onyl the first element of the batch is kept. This is useful if
+        the dataloader returns batches as (inputs, targets, ...) tuples.
+    
+    Returns
+    -------
+    predictions : tensor
+        Tensor (on cpu) of raw predictions. It is the user's responsability 
+        to convert the raw predictions if necessary (e.g. logits to proba).
+    """
     predictions = []
     
     # Compute predictions
@@ -38,10 +53,35 @@ def predict(model, dataloader, discard_target=True):
     
 def predict_stack(model, stack, batch_size, input_channels="RG", 
                   numpy_channels_last=True, transform=None):
-    """Output predictions for the given image stack and model.
+    """
+    Output predictions for the given image stack and model.
     
-    `stack` can either be the filename (`input_channels` is then required),
-    or an ndarray/tensor."""
+    Parameters
+    ----------
+    model : pytorch model
+        The model which will be used to make the predictions.
+    stack : str or ndarray or tensor
+        Input stack of images to predict.
+        If string, it is the filename of the stack.
+        If ndarray, it is the stack of images array.
+        If tensor, it is considered already with correct shape (channels first,
+        and correct input_channels).
+    batch_size : int
+        Number of images to send to the network at once.
+    input_channels : str (default = "RG")
+        Input channels to use (Red Green Blue). Is ignored if stack is a tensor.
+    numpy_channels_last : bool (default = True)
+        If True, and stack is an ndarray, it will be converted from NHWC to NCHW.
+    transform : callable (optional)
+        Input transformation function.
+        /!\ Takes a ndarray as input. (This is to be consistent with other functions).
+    
+    Returns
+    -------
+    predictions : tensor
+        Tensor (on cpu) of raw predictions. It is the user's responsability 
+        to convert the raw predictions if necessary (e.g. logits to proba).
+    """
     # Make sure stack is in the correct shape
     if isinstance(stack, str):
         stack = imread_to_float(stack, scaling=255)
@@ -78,7 +118,25 @@ def predict_stack(model, stack, batch_size, input_channels="RG",
 
 
 def evaluate(model, dataloader, metrics):
-    """Return the average metric values for the given dataloader and model."""
+    """
+    Return the average metric values for the given dataloader and model.
+    
+    Parameters
+    ----------
+    model : pytorch model
+        The model which will be used to make the predictions.
+    dataloader : pytorch dataloader
+        Dataloader returning batches of inputs.
+    metrics : dict
+        Dictionary where keys are metric names (str), and values are metric 
+        function (callable taking predictions, targets as inputs).
+    
+    Returns
+    -------
+    values : dict
+        Dictionary where keys are metric names (str), and values are metric 
+        average values.
+    """
     values = {}
     for key in metrics.keys():
         values[key] = 0
@@ -101,7 +159,43 @@ def evaluate(model, dataloader, metrics):
 
 def evaluate_stack(model, input_stack, target_stack, batch_size, metrics,
                    input_channels="RG", numpy_channels_last=True, transform=None):
-    """Return the average metric values for the given stack and model."""
+    """
+    Return the average metric values for the given stack and model.
+    
+    Parameters
+    ----------
+    model : pytorch model
+        The model which will be used to make the predictions.
+    input_stack : str or ndarray or tensor
+        Input stack of images to predict.
+        If string, it is the filename of the stack.
+        If ndarray, it is the stack of images array.
+        If tensor, it is considered already with correct shape (channels first,
+        and correct input_channels).
+    target_stack : str or ndarray or tensor
+        Input stack of images to predict.
+        If string, it is the filename of the stack.
+        If ndarray, it is the stack of images array.
+        If tensor, it is the stack of images tensor.
+    batch_size : int
+        Number of images to send to the network at once.
+    metrics : dict
+        Dictionary where keys are metric names (str), and values are metric 
+        function (callable taking predictions, targets as inputs).
+    input_channels : str (default = "RG")
+        Input channels to use (Red Green Blue). Is ignored if input_stack is a tensor.
+    numpy_channels_last : bool (default = True)
+        If True, and input_stack is an ndarray, it will be converted from NHWC to NCHW.
+    transform : callable (optional)
+        Input transformation function.
+        /!\ Takes a ndarray as input. (This is to be consistent with other functions).
+    
+    Returns
+    -------
+    values : dict
+        Dictionary where keys are metric names (str), and values are metric 
+        average values.
+    """
     # Make sure target_stack is in the correct shape
     if isinstance(target_stack, str):
         target_stack = imread_to_float(target_stack, scaling=255)
@@ -138,20 +232,21 @@ def _make_images_valid(images):
 
 def show_sample(model, dataloader, n_samples=4, metrics=None):
     """
-    Display a random sample of some inputs, predictions, and targets.
+    Display random samples of inputs, predictions, and targets.
     
-    Args:
-        model: PyTorch model
-            The model, based on Torch.nn.Module. It should have a `device` 
-            attribute.
-        dataloader: PyTorch DataLoader
-            The data will be sampled from the DataLoader's dataset.
-        n_samples: int (default = 4)
-            Number of images in the random sampling.
-        metrics: dict of callable
-            Dictionary of metrics to be computed over the samples. It should 
-            take 3 tensors as input (predictions, targets, and masks), and 
-            output a scalar tensor.
+    Parameters
+    ----------
+    model : PyTorch model
+        The model, based on Torch.nn.Module. It should have a `device` 
+        attribute.
+    dataloader : PyTorch DataLoader
+        The data will be sampled from the DataLoader's dataset.
+    n_samples : int (default = 4)
+        Number of images in the random sampling.
+    metrics : dict of {str : callable}
+        Dictionary of metrics to be computed over the samples. It should 
+        take 3 tensors as input (predictions, targets, and masks), and 
+        output a scalar tensor.
     """
     indices = np.random.randint(0, len(dataloader.dataset), n_samples)
     items = [dataloader.dataset[i] for i in indices]

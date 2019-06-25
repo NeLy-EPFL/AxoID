@@ -23,20 +23,23 @@ class ImageLoaderDataset(data.Dataset):
     def __init__(self, x_filenames, y_filenames, w_filenames=None, 
                  input_channels="RGB", transform=None, target_transform=None):
         """
-        Args:
-            x_filenames: list of str
-                Contains the filenames/path to the input images.
-            y_filenames: list of str
-                Contains the filenames/path to the target images.
-            w_filenames: list of str
-                Contains the filenames/path to the weight images.
-            input_channels: str (default = "RGB")
-                Indicates the channels to load from the input images, e.g. "RG"
-                for Red and Green.
-            transform: callable (default = None)
-                Transformation to apply to the input images.
-            target_transform: callable (default = None)
-                Transformation to apply to the target and weight images.
+        Initialize the Dataset with the filenames and transforms.
+        
+        Parameters
+        ----------
+        x_filenames : list of str
+            Contains the filenames/path to the input images.
+        y_filenames : list of str
+            Contains the filenames/path to the target images.
+        w_filenames : list of str (optional)
+            Contains the filenames/path to the weight images.
+        input_channels : str (default = "RGB")
+            Indicates the channels to load from the input images, e.g. "RG"
+            for Red and Green, "R" for only Red.
+        transform : callable (optional)
+            Transformation to apply to the input images.
+        target_transform : callable (optional)
+            Transformation to apply to the target and weight images.
         """
         super(ImageLoaderDataset, self).__init__()
         self.x_filenames = x_filenames
@@ -58,6 +61,7 @@ class ImageLoaderDataset(data.Dataset):
         return len(self.x_filenames)
     
     def __getitem__(self, idx):
+        """Load the files, and transform them before returning."""
         # Load images to float in range [0,1]
         image = imread_to_float(self.x_filenames[idx], scaling=255)
         target = imread_to_float(self.y_filenames[idx], scaling=255)
@@ -87,8 +91,8 @@ class ImageLoaderDataset(data.Dataset):
 def get_filenames(data_dir, use_weights=False, valid_extensions=('.png', '.jpg', '.jpeg')): 
     """
     Return 2(3) lists with the input, target (and weight) filenames respectively.
-    Note thate filenames should be order the same to identify correct tuples.
     
+    Note thate filenames should be ordered the same to identify correct tuples.
     The data directory is assumed to be organised as follow:
         data_dir:
             subdir1:
@@ -100,19 +104,22 @@ def get_filenames(data_dir, use_weights=False, valid_extensions=('.png', '.jpg',
                 seg_frames: folder with target images
                 wgt_frames: folder with weight images (optional)
             ...
-    data_dir can also be a list of the path to subdirs to use.
+    data_dir can also be a list of the path to subdirs to use:
+        data_dir = ["/path/to/subdir1", "/path/to/subdir2", ...]
     
-    Args:
-        data_dir: str, or list of str
-            Directory/path to the data, or list of directories/paths to the subdirs.
-        use_weights: bool (default = False)
-            If True, will look for weight images and add them to the dataloaders.
-        valid_extensions: tuple of str (default = ('.png', '.jpg', '.jpeg'))
-            Tuple of the valid image extensions.
+    Parameters
+    ----------
+    data_dir : str, or list of str
+        Directory/path to the data, or list of directories/paths to the subdirs.
+    use_weights : bool (default = False)
+        If True, will look for weight images and add them to the dataloaders.
+    valid_extensions : tuple of str (default = ('.png', '.jpg', '.jpeg'))
+        Tuple of the valid image extensions.
     
-    Returns:
-        x_filenames, y_filenames(, w_filenames): lists of str 
-            Contain the input, target, (and weight) image paths respectively.
+    Returns
+    -------
+    x_filenames, y_filenames(, w_filenames): lists of str 
+        Contain the input, target, (and weight) image paths respectively.
     """
     if isinstance(data_dir, list):
         subdirs_list = data_dir
@@ -152,7 +159,19 @@ def get_filenames(data_dir, use_weights=False, valid_extensions=('.png', '.jpg',
 
 
 def pad_collate(batch):
-    """Collate function that pads input/target/mask images to the same size."""
+    """
+    Collate function that pads input/target(/mask) images to the same size.
+    
+    Parameters
+    ----------
+    batch : list of tuple
+        Each tuple contains input, target (and weight) of one element.
+    
+    Returns
+    -------
+    pad_batch : tensor
+        Tensor of padded elements, where they all have the same size.
+    """
     pad_batch = []
     
     # Find largest shape (item[1] is the target image)
@@ -189,28 +208,30 @@ def get_dataloader(data_dir, batch_size, input_channels="RG",
     """
     Return a dataloader with the data in the given directory.
     
-    Args:
-        data_dir: str, or list of str
-            Directory/path to the data (see get_filenames() for the structure),
-            or list of directories/paths to the subdirs.
-        batch_size: int
-            Number of samples to return as a batch.
-        input_channels: str (default = "RG")
-            Indicates the channels to load from the input images, e.g. "RG"
-            for Red and Green.
-        shuffle: bool (default = True)
-            If True, the data is shuffled before being returned as batches.
-        use_weights: bool (default = False)
-            If True, will look for weight images and add them to the dataloaders.
-        transform: callable (default = None)
-            Transformation to apply to the input images.
-        target_transform: callable (default = None)
-            Transformation to apply to the target (and weight) images.
-        num_workers: int (default = 1)
-            Number of workers for the PyTorch Dataloader.
+    Parameters
+    ----------
+    data_dir : str, or list of str
+        Directory/path to the data (see get_filenames() for the structure),
+        or list of directories/paths to the subdirs.
+    batch_size : int
+        Number of samples to return as a batch.
+    input_channels : str (default = "RG")
+        Indicates the channels to load from the input images, e.g. "RG"
+        for Red and Green.
+    shuffle : bool (default = True)
+        If True, the data is shuffled before being returned as batches.
+    use_weights : bool (default = False)
+        If True, will look for weight images and add them to the dataloaders.
+    transform : callable (default = None)
+        Transformation to apply to the input images.
+    target_transform : callable (default = None)
+        Transformation to apply to the target (and weight) images.
+    num_workers : int (default = 1)
+        Number of workers for the PyTorch Dataloader.
     
-    Returns:
-        A dataloader that generates tuples (input, target).
+    Returns
+    -------
+    A dataloader that generates tensors of batches.
     """
     if use_weights:
         x, y, w = get_filenames(data_dir, use_weights=use_weights)
@@ -232,50 +253,51 @@ def get_all_dataloaders(data_dir, batch_size, input_channels="RG", test_dataload
     """
     Return a dataloader dictionary with the train, validation, and (optional) test dataloaders.
     
-    Args:
-        data_dir: str
-            Directory/path to the data, it should contain "train/", "validation/",
-            (optional) "test/", and (optional) "synthetic/" subdirs
-            (see get_filenames() for their specific structure).
-        batch_size: int
-            Number of samples to return as a batch.
-        input_channels: str (default = "RG")
-            Indicates the channels to load from the input images, e.g. "RG"
-            for Red and Green.
-        test_dataloader: bool (default = False)
-            If True, the dictionary will contain the test loader under "test".
-        use_weights: bool (default = False)
-            If True, will look for weight images and add them to the dataloaders.
-        synthetic_data: bool (default = False)
-            If True, the train loader will contain the synthetic data.
-            See synthetic_ratio for choosing the proportion of synthetic data.
-        synthetic_ratio: float (default = None)
-            If synthetic_data is False, this is ignored.
-            If not set, all data under "train/" and "synthetic/" are used for 
-            the training (this is the default use).
-            If set, it represents the ratio of synthetic vs. real data to use
-            for training, and is based over real data size. For instance, if
-            there are 1000 real frames and the synthetic_ratio is 25, enough
-            real experiments will be taken to be as close as possible to 750
-            frames, and enough synthetic experiments to be as close as 250 frames.
-        synthetic_only: bool (default = False)
-            If True, the train dataloader will contain only the synthetic data.
-            As opposed to synthetic_ratio=1.0, this will use all of the data
-            under "synthetic/", instead of using as many experiments as there 
-            are in "train/". /!\ Overwrite synthetic_data.
-        train_transform: callable (default = None)
-            Transformation to apply to the train input images.
-        train_target_transform: callable (default = None)
-            Transformation to apply to the train target (and weight) images.
-        eval_transform: callable (default = None)
-            Transformation to apply to the validation/test input images.
-        eval_target_transform: callable (default = None)
-            Transformation to apply to the validation/test target (and weight) images.
+    Parameters
+    ----------
+    data_dir : str
+        Directory/path to the data, it should contain "train/", "validation/",
+        (optional) "test/", and (optional) "synthetic/" subdirs
+        (see get_filenames() for their specific structure).
+    batch_size : int
+        Number of samples to return as a batch.
+    input_channels : str (default = "RG")
+        Indicates the channels to load from the input images, e.g. "RG"
+        for Red and Green.
+    test_dataloader : bool (default = False)
+        If True, the dictionary will contain the test loader under "test".
+    use_weights : bool (default = False)
+        If True, will look for weight images and add them to the dataloaders.
+    synthetic_data : bool (default = False)
+        If True, the train loader will contain the synthetic data.
+        See synthetic_ratio for choosing the proportion of synthetic data.
+    synthetic_ratio : float (default = None)
+        If synthetic_data is False, this is ignored.
+        If not set, all data under "train/" and "synthetic/" are used for 
+        the training (this is the default use).
+        If set, it represents the ratio of synthetic vs. real data to use
+        for training, and is based over real data size. For instance, if
+        there are 1000 real frames and the synthetic_ratio is 25, enough
+        real experiments will be taken to be as close as possible to 750
+        frames, and enough synthetic experiments to be as close as 250 frames.
+    synthetic_only : bool (default = False)
+        If True, the train dataloader will contain only the synthetic data.
+        As opposed to synthetic_ratio=1.0, this will use all of the data
+        under "synthetic/", instead of using as many experiments as there 
+        are in "train/". /!\ Overwrite synthetic_data.
+    train_transform : callable (default = None)
+        Transformation to apply to the train input images.
+    train_target_transform : callable (default = None)
+        Transformation to apply to the train target (and weight) images.
+    eval_transform : callable (default = None)
+        Transformation to apply to the validation/test input images.
+    eval_target_transform : callable (default = None)
+        Transformation to apply to the validation/test target (and weight) images.
     
-    Returns:
-        A dictionary with the train, validation and (optional) test dataloaders
-        under the respective keys "train", "valid", and "test".
-        Batches are made of (input, target) tuples.
+    Returns
+    -------
+    A dictionary with the train, validation and (optional) test dataloaders
+    under the respective keys "train", "valid", and "test".
     """
     # If synthetic data is used, build a list of folders for the train set
     if synthetic_only:
@@ -371,8 +393,23 @@ def normalize_range(images):
 # Following transform is to avoid 2x2 maxpoolings on odd-sized images
 # (it makes sure down- and up-sizing are consistent throughout the network)
 def pad_transform(image, u_depth):
-    """Pad the image to assure its height and width are mutliple of 2**u_depth.
-    If RGB, format should be channels first (<=> CHW)."""
+    """
+    Pad the image to assure its height and width are mutliple of 2**u_depth.
+    
+    If RGB, format should be channels first (<=> CHW).
+    
+    Parameters
+    ----------
+    image : ndarray
+        Image array in numpy.
+    u_depth : int
+        Depth of the U-Net network.
+    
+    Returns
+    -------
+    padded_image : ndarray
+        Image padded with zeros to a size that can be divided by 2**u_depth.
+    """
     factor = 2 ** u_depth
     if image.ndim == 3: # channels first
         height, width = image.shape[1:]
@@ -393,8 +430,13 @@ def pad_transform(image, u_depth):
         return np.pad(image, padding, 'constant')
 
 def pad_transform_stack(stack, u_depth):
-    """Pad the stack to assure its height and width are mutliple of 2**u_depth.
-    If RGB, format should be channels first (<=> NCHW)."""
+    """
+    Pad the stack to assure its height and width are mutliple of 2**u_depth.
+    
+    If RGB, format should be channels first (<=> NCHW).
+    
+    Same as pad_transform(), but for stack of images.
+    """
     # Loop over the image and calls pad_transform()
     # This is not optimal, but still fast enough
     pad_stack = []
@@ -420,7 +462,32 @@ def _separation_weights(image):
     weights = np.exp(-((distances[...,0] + distances[...,1]) / 6) ** 2) * (1 - image)
     return weights    
 def compute_weights(image, contour=True, separation=True):
-    """Return the pixel-wise weighting of the binary image/stack."""
+    """
+    Return the pixel-wise weighting of the binary image/stack.
+    
+    Not that these weights will be rescaled by the positive and negative
+    weighting at train time as: weight = neg_w + (pos_w - neg_w) * weight.
+    Therefore, they adapt to the proportion of positive pixels automatically.
+    
+    Parameters
+    ----------
+    image : ndarray
+        Image or stack of image (binary) corresponding to the targetted 
+        segmentation(s) of a frame(s).
+    contour : bool (default = True)
+        If True, weights will be increased around ROIs.
+        This is useful to have a gradient around ROIs instead of a step, and 
+        helps to learn contours.
+    separation : bool (default = True)
+        If True, weights will be increased between close ROIs.
+        This is usefull to increase importance of separation borders, and help
+        to learn to draw individual ROI.
+    
+    Returns
+    -------
+    weights : ndarray
+        Image(s) where the greyscale value corresponds to the pixels' weights.
+    """
     weights = np.zeros(image.shape, np.float32)
     image = image.astype(np.bool)
     if not contour and not separation:

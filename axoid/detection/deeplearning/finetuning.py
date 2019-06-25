@@ -26,7 +26,45 @@ from .test import evaluate_stack
 def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
               data_aug=True, n_iter_min=0, n_iter_max=1000, patience=200,
               batch_size=16, learning_rate=0.0005, verbose=1):
-    """Fine tune the given model on the annotated data, and return the resulting model."""
+    """
+    Fine tune the given model on the annotated data, and return the resulting model.
+    
+    Parameters
+    ----------
+    model : pytorch model
+        The model to fine tune.
+    x_train : ndarray
+        Array with the input frames to use for training.
+    y_train : ndarray
+        Array with the target segmentations to use for training.
+    weights : ndarray (optional)
+        Array with the pixel-wise weights for training.
+    x_valid : ndarray (optional)
+        Array with the input frames to use for validation.
+    y_valid : ndarray (optional)
+        Array with the target segmentations to use for validation.
+    data_aug : bool (default = True)
+        If True, will use data augmentation during training (see code for
+        augmentation scheme).
+    n_iter_min : int (default = 0)
+        Minimum number of training iteration to preform, regardless of improvement.
+    n_iter_max : int (default = 1000)
+        Maximum number of training iteration to preform, regardless of improvement.
+    patience : int (default = 200)
+        Number of iteration to wait for a validation dice improvement, after
+        which the fine tuning is stopped (this resembles an early stopping).
+    batch_size : int (default = 16)
+        Number of element in a batch to send to the network at once.
+    learning_rate : float (default = 0.0005)
+        Learning rate for the training.
+    verbose : int (default = 1)
+        Verbosity level. 0 is silent, and 1 is verbose.
+    
+    Returns
+    -------
+    model_ft : pytorch model
+        The fine tuned model.
+    """
     u_depth = len(model.convs)
     device = model.device
     annotated_per_batch = min(len(y_train), batch_size)
@@ -164,7 +202,11 @@ def fine_tune(model, x_train, y_train, weights=None, x_valid=None, y_valid=None,
 
 
 class ROIAnnotator_mpl(widgets.LassoSelector):
-    """Use matplotlib to draw ROIs for the given images."""
+    """
+    Use matplotlib to draw ROIs for the given images.
+    
+    /!\ Deprecated, see ROIAnnotator() for the OpenCV annotator.
+    """
     
     def __init__(self, images):
         """Create the figure and start the selection with the first frame."""
@@ -257,18 +299,26 @@ class ROIAnnotator_mpl(widgets.LassoSelector):
 
 
 class ROIAnnotator():
-    """Use OpenCV to draw ROI for the given frames."""
+    """
+    Use OpenCV to draw ROI for the given frames.
+    
+    This is used to draw segmentations for a few frames, which can later be 
+    used for finetuning.
+    """
     
     def __init__(self, images, window_name="ROI Annotation", rgb2bgr=True):
         """
         Start the ROI annotation process with the given images.
         
-        Args:
-            images: ndarray (N, H, W, C)
-                Numpy array with the input images on which to annotate the ROIs
-            rgb2bgr: bool (default: True)
-                If True, `images` will be converted from RGB to BGR (OpenCV works
-                with BGR).
+        Parameters
+        ----------
+        images : ndarray (N, H, W, C)
+            Numpy array with the input images on which to annotate the ROIs.
+        window_name : str (default = "ROI Annotation")
+            Name of the OpenCV window. It should be different from existing ones.
+        rgb2bgr : bool (default = True)
+            If True, `images` will be converted from RGB to BGR (OpenCV works
+            with BGR). Else, consider the images to already by in BGR format.
         """
         # Initialization        
         self.images = images.copy()
@@ -304,7 +354,17 @@ class ROIAnnotator():
         self.main()
        
     def add(self, images, rgb2bgr=True):
-        """Add the images to the annotator."""
+        """
+        Add the images to the annotator.
+        
+        Parameters
+        ----------
+        images : ndarray (N, H, W, C)
+            Numpy array with the input images on which to annotate the ROIs.
+        rgb2bgr : bool (default = True)
+            If True, `images` will be converted from RGB to BGR (OpenCV works
+            with BGR). Else, consider the images to already by in BGR format.
+        """
         # Add images to self
         # Change from RGB to BGR (for OpenCV compatibility)
         if rgb2bgr:
@@ -322,6 +382,24 @@ class ROIAnnotator():
                                        axis=0)
         for _ in range(len(images)):
             self.brushstrokes.append([])
+    
+    def set_segmentations(self, seg):
+        """
+        Reinitialize the segmentations and brushstrokes with the given ones.
+        
+        Parameters
+        ----------
+        seg : ndarray
+            Stack of binary images corresponding to the segmentations of the
+            annotator images.
+        """
+        if seg.shape != self.images.shape[:-1]:
+            raise ValueError("Segmentations and images should have the same "
+                             "shape (%s != %s)" % (seg.shape, self.images.shape[:-1]))
+        self.segmentations = seg.astype(np.bool)
+        self.brushstrokes = []
+        for segmentation in self.segmentations:
+            self.brushstrokes.append([segmentation.astype(np.float64)])
     
     def imshow(self):
         """Draw the current image."""
@@ -387,7 +465,13 @@ class ROIAnnotator():
         self.idx = position
     
     def paintbrush_callback(self, event, x, y, flags, param):
-        """Paintbrush mouse callback for the OpenCV window."""
+        """
+        Paintbrush mouse callback for the OpenCV window.
+        
+        In this mode, the mouse is like a paint brush, and is used to draw
+        ROIs by "painting" ROI pixels. An ROI is automatically defined by a
+        group of connected ROI pixels.
+        """
         # If on the image, start drawing
         if event == cv2.EVENT_LBUTTONDOWN and not self.erasing and \
            x < self.images.shape[2] and y < self.images.shape[1]:
@@ -427,7 +511,13 @@ class ROIAnnotator():
             self.erasing = False
     
     def contour_callback(self, event, x, y, flags, param):
-        """Contour drawing mouse callback for the OpenCV window."""
+        """
+        Contour drawing mouse callback for the OpenCV window.
+        
+        In this mode, the user draw the contour of an ROI, which is automatically
+        filled when releasing the mouse button. An ROI is automatically defined
+        by a group of connected ROI pixels.
+        """
         # Start drawing if on the image
         if event == cv2.EVENT_LBUTTONDOWN and \
            x < self.images.shape[2] and y < self.images.shape[1]:

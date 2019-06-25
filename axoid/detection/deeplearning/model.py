@@ -13,7 +13,15 @@ import torch
 
 
 def weights_initialization(model):
-    """Initialize the weights of the given PyTorch model."""
+    """
+    Initialize the weights of the given PyTorch model.
+    
+    Parameters
+    ----------
+    model : pytorch model
+        Model containing convolutional layers, transposed convolutional layers,
+        batch normalization layers, and/or linear layers.
+    """
     for m in model.modules():
         if isinstance(m, torch.nn.Conv2d):
             torch.nn.init.xavier_uniform_(m.weight)
@@ -33,7 +41,12 @@ def weights_initialization(model):
 
 
 class UNetConv(torch.nn.Module):
-    """U-Net like convolution block."""
+    """
+    U-Net like convolution block.
+    
+    Convolution --> Activation --> BatchNorm --> Convolution --> Activation -->
+    Batchnorm
+    """
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, 
                  activation=torch.nn.ReLU(), batchnorm=False):
         super(UNetConv, self).__init__()
@@ -58,7 +71,12 @@ class UNetConv(torch.nn.Module):
 
 
 class UNetUpConv(torch.nn.Module):
-    """U-Net like up-convolution block."""
+    """
+    U-Net like up-convolution block.
+    
+    Transpose convolution --> Concatenation with bridge --> Convolution --> 
+    Activation --> BatchNorm --> Convolution --> Activation --> Batchnorm
+    """
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1,
                  activation=torch.nn.ReLU(), batchnorm=False):
         super(UNetUpConv, self).__init__()
@@ -93,31 +111,34 @@ class CustomUNet(torch.nn.Module):
     NB: Depth and initial number of channels are tunable, zero-padding is used
     so that input and output are of the same size, optional batch normalization
     layers.
-    
-    Args:
-        in_channels: int
-            Number of channels of the input images.
-        u_depth: int (default = 4)
-            Depth of the network's U-shape (should be > 0). I.e., there will
-            be `u_depth` MaxPooling, and `u_depth` transposed convolutions.
-        out1_channels: int (default = 16)
-            Number of output channels after the first convolutional block.
-            Note that after this, each ConvBlock doubles the channels, and
-            each UpConvBlock halves the channels.
-        activation: PyTorch activation function (default = torch.nn.ReLU())
-            The non-linear activation to apply after each convolution.
-            Note that with the current implementation, this one is reused 
-            everywhere. Therefore, it cannot have any learnable parameters.
-        batchnorm: bool (default = True)
-            If True, the network will have a batch normalization layer after
-            each convolution (and after the non-linearity).
-        device: PyTorch device (default = torch.device("cpu"))
-            Device to which the model is to be placed
     """
     def __init__(self, in_channels=2, u_depth=4, out1_channels=16,
                  activation=torch.nn.ReLU(), batchnorm=True,
                  device=torch.device("cpu")):
-        """Initialize the model (see class docstring for arguments description)."""
+        """
+        Initialize the model.
+        
+        Parameters
+        ----------
+        in_channels : int
+            Number of channels of the input images.
+        u_depth : int (default = 4)
+            Depth of the network's U-shape (should be > 0). I.e., there will
+            be `u_depth` MaxPooling, and `u_depth` transposed convolutions.
+        out1_channels : int (default = 16)
+            Number of output channels after the first convolutional block.
+            Note that after this, each ConvBlock doubles the channels, and
+            each UpConvBlock halves the channels.
+        activation : PyTorch activation function (default = torch.nn.ReLU())
+            The non-linear activation to apply after each convolution.
+            Note that with the current implementation, this one is reused 
+            everywhere. Therefore, it cannot have any learnable parameters.
+        batchnorm : bool (default = True)
+            If True, the network will have a batch normalization layer after
+            each convolution (and after the non-linearity).
+        device : PyTorch device (default = torch.device("cpu"))
+            Device to which the model is to be placed
+        """
         super().__init__()
         self.in_channels = in_channels
         self.activation = activation
@@ -177,7 +198,27 @@ class CustomUNet(torch.nn.Module):
 # Useful function for loading/saving models
 def load_model(model_dir, input_channels="RG", u_depth=4, out1_channels=16, 
                device=torch.device("cpu")):
-    """Load the model defined/saved in the directory."""
+    """
+    Load the model defined/saved in the directory.
+    
+    Parameters
+    ----------
+    model_dir : str
+        Path to the model files (utils_model_save.py + model_best.pth).
+    input_channels : str (default = "RG")
+        Input channel to use amongs Red Green Blue.
+    u_depth : int (default = 4)
+        Depth of the U-Net, see CustomUNet.
+    out1_channels : int (default = 16
+        Width of the U-Net, see CustomUNet.
+    device : pytorch device
+        Device on which to send the model (cpu, gpu).
+    
+    Returns
+    -------
+    model : pytorch model
+        The loaded model from the folder.
+    """
     # Load the definition of the model (<=> its architecture)
     sys.path.append(os.path.join(model_dir))
     from utils_model_save import CustomUNet
@@ -190,7 +231,19 @@ def load_model(model_dir, input_channels="RG", u_depth=4, out1_channels=16,
     return model
 
 def save_model(model, model_dir, exist_ok=True):
-    """Save the model to the directory."""
-    os.makedirs(model_dir, exist_ok=True)
+    """
+    Save the model to the directory.
+    
+    Parameters
+    ----------
+    model : pytorch model
+        The model to be saved in the folder.
+    model_dir : str
+        Path to the model directory (will save utils_model_save.py and 
+        model_best.pth).
+    exist_ok : bool (default = True)
+        If True, does not raise an error if the directory already exists.
+    """
+    os.makedirs(model_dir, exist_ok=exist_ok)
     shutil.copy("utils_model.py", os.path.join(model_dir, "utils_model_save.py"))
     torch.save(model.state_dict(), os.path.join(model_dir, "model_best.pth"))
