@@ -27,9 +27,8 @@ def imread_to_float(filename, scaling=None, return_scaling=False):
 
 def to_npint(stack, dtype=np.uint8, float_scaling=None):
     """Scale and cast the stack/image to dtype."""
-    # If already correct type, do nothing
     if stack.dtype == dtype:
-        return stack
+        return stack.copy()
         
     if issubclass(stack.dtype.type, np.floating):
         # If no scaling is precised, use max range of given type
