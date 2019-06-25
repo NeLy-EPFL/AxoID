@@ -11,7 +11,24 @@ import numpy as np
 
 
 def get_rules(image, remove_contradictions=True):
-    """Return the row-order rules between the labelled regions as a 2D array."""
+    """
+    Return the row-order rules between the labelled regions as a 2D array.
+    
+    Parameters
+    ----------
+    image : ndarray
+        Identity image, where ROI have an ID corresponding to their pixels value.
+    remove_contradictions : bool (default = True)
+        If True and two rules contradict them-selves (e.g. 1 left to 2 and 
+        2 left to 1), both are removed.
+    
+    Returns
+    -------
+    rules : ndarray
+        Array of rules, where each row is a rule. A rule is two numbers, which
+        indicates that the first one should appear left to the second one.
+        Can be empty if there are no rows where there are multiple labels.
+    """
     rules = []
     
     # Find pixels where the label changes horizontally
@@ -60,7 +77,22 @@ def _verify_frame(rules, label):
     return np.any(verification)
 
 def rules_violated(rules, labels):
-    """Verify if the labels violates any rules."""    
+    """
+    Verify if the labels violates any rules.
+    
+    Parameters
+    ----------
+    rules : ndarray
+        Array of rules as returned by get_rules().
+    labels : ndarray
+        Label image or stack of label images.
+    
+    Returns
+    -------
+    verification : bool or array of bool
+        False if no rules are violated, True if any is for the image.
+        If labels is a stack, the array is the verification for each single image.
+    """    
     if labels.ndim == 2:
         return _verify_frame(rules, labels)
     else:   
@@ -68,7 +100,24 @@ def rules_violated(rules, labels):
     
 
 def renumber_ids(model, identities=None):
-    """Renumber axons with consecutive integers starting at 1."""
+    """
+    Renumber axons with consecutive integers starting at 1.
+    
+    Parameters
+    ----------
+    model : InternalModel
+        An internal model used for tracking. Its axon identities will be 
+        renumbered accordingly, and its image redrawn.
+    identities : ndarray (optional)
+        Stack of label images corresponding to tracked identities with the model.
+    
+    Returns
+    -------
+    [new_identities] : ndarray (optional)
+        If identities were given, new_identities will be returned and contained
+        the renumbered identities.
+        
+    """
     # Change numbering in model and keep track of it for identities
     new_ids = dict()
     for i, axon in enumerate(model.axons):

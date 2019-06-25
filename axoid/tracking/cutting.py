@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Module with function useful for "cuts" of ROIs. Cuts are a linear separation of 
-an ROI into 2 ROI, effectively making 2 axons out of it.
-It assumes ROIs elongated vertically (or the "top" of the ellipse might appear 
-inverted in different frames if the ellipse is horizontal).
+Module with function useful for "cuts" of ROIs. 
+Cuts are a linear separation of an ROI into 2 ROIs, effectively making 2 axons 
+out of it.
+/!\ It assumes ROIs elongated vertically. If they are horizontal, the code is 
+unable to guess which is the same side (it simply takes the top elongated side
+as common, whatever its orientation).
 Created on Tue Jun 11 14:51:46 2019
 
 @author: nicolas
@@ -20,9 +22,21 @@ from axoid.detection.clustering import segment_projection
 
 
 def fit_line(image):
-    """Fit a line to the binary object in image, and return its parameters.
+    """
+    Fit a line to the binary object in image, and return its parameters.
     
-    Paramters are normal unit vector and distance to origin.
+    Parameters
+    ----------
+    image : ndarray
+        Binary image where foreground pixels will be used to fit the line.
+    
+    Returns
+    -------
+    n : ndarray
+        Normal unit vector to the line. It is in the row-col coordinate systems,
+        as opposed to x-y (inverted).
+    d : float
+        Shortest distance from the line to the origin (top-left corner).
     """
     # Coordinates of pixels
     coords = np.array(np.where(image)).T
@@ -46,7 +60,26 @@ def fit_line(image):
 
 
 def norm_to_ellipse(n, d, roi_img):
-    """Normalize the line parameters to an ellipse fitted on the ROI."""
+    """
+    Normalize the line parameters to an ellipse fitted on the ROI.
+    
+    Parameters
+    ----------
+    n : ndarray
+        Normal unit vector to the line. It is in the row-col coordinate systems,
+        as opposed to x-y (inverted).
+    d : float
+        Shortest distance from the line to the origin (top-left corner).
+    roi_img : ndarray
+        Binary image with a single ROI.
+    
+    Returns
+    -------
+    n : ndarray
+        Normal unit vector to the line, normalized to the ROI ellipse.
+    d : float
+        Shortest distance from the line to the origin, normalized to the ROI ellipse.
+    """
     new_n = n.copy()
     new_d = copy(d)
     
@@ -76,7 +109,25 @@ def norm_to_ellipse(n, d, roi_img):
     return new_n, new_d
 
 def fit_to_ellipse(n, d, roi_img):
-    """Transform the normalized line parameters to an ellipse fitted on the ROI."""
+    """
+    Transform the normalized line parameters to an ellipse fitted on the ROI.
+    
+    Parameters
+    ----------
+    n : ndarray
+        Normal unit vector to the line, normalized to an ellipse.
+    d : float
+        Shortest distance from the line to the origin, normalized to an ellipse.
+    roi_img : ndarray
+        Binary image with a single ROI.
+    
+    Returns
+    -------
+    n : ndarray
+        Normal unit vector to the line, fitted to the ROI ellipse.
+    d : float
+        Shortest distance from the line to the origin, fitted to the ROI ellipse.
+    """
     new_n = n.copy()
     new_d = copy(d)
     
@@ -106,8 +157,32 @@ def fit_to_ellipse(n, d, roi_img):
     return new_n, new_d
 
 
-def find_cuts(projection, model, min_area=None, ellipse_normalization=True):
-    """Return a dictionary mapping axon identity to a list of cuts (as parametrized lines)."""
+def find_cuts(projection, model, min_area=None):
+    """
+    Return a dictionary mapping axon identity to a list of cuts (as parametrized lines).
+    
+    This is to be used in the AxoID pipeline, where it assumes that there was
+    fine tuning, using similar frames. Projection is the temporal mean of these
+    frames (with potential smoothing if there were not many frames). Thus,
+    projection was used as the initialization frame for the tracker model.
+    
+    Parameters
+    ----------
+    projection : ndarray
+        Temporal projection of the similar frames used for fine tuning, and to
+        initialize the tracker model.
+    model : InternalModel
+        Internal model of the tracker.
+    min_area : int (optional)
+        Minimum size of ROIs in pixels, under which ROIs are discarded.
+    
+    Returns
+    -------
+    cuts : dict
+        Dictionary mapping axon identities (keys) to a list of cuts (values).
+        Each element of the list corresponds to a cut, i.e. a tuple of line 
+        parameters (n, d). The list is sorted by ascending distance d.
+    """
     # Find cuts as separation of ROIs in segmentation
     segmentation = segment_projection(projection, min_area)
     separations = np.logical_and(segmentation, np.logical_not(
@@ -123,8 +198,7 @@ def find_cuts(projection, model, min_area=None, ellipse_normalization=True):
         n, d = fit_line(separations == region.label)
         
         # Normalize the cut to an ellipse fitting of the ROI
-        if ellipse_normalization:            
-            n, d = norm_to_ellipse(n, d, model.image == region.label)
+        n, d = norm_to_ellipse(n, d, model.image == region.label)
         
         cuts[region.label].append((n, d))
     
@@ -136,9 +210,26 @@ def find_cuts(projection, model, min_area=None, ellipse_normalization=True):
 
 
 def get_cut_pixels(n, d, roi_img):
-    """Return the coordinates of the pixels on the positive side of the cut.
+    """
+    Return the coordinates of the pixels on the positive side of the cut.
     
-    The "positive side" is where coords @ n > d.
+    The "positive side" is where coords @ n > d, i.e. the side further away from
+    the ellipse's center.
+    
+    Parameters
+    ----------
+    n : ndarray
+        Normal unit vector to the line, normalized to an ellipse.
+    d : float
+        Shortest distance from the line to the origin, normalized to an ellipse.
+    roi_img : ndarray
+        Binary image with a single ROI.
+    
+    Returns
+    -------
+    coords : ndarray
+        Coordinate array where each row is a pixel coordinate in row-col, of
+        every pixel on the "positive side" of the cut.
     """
     # Fit the line to the ROI
     n, d = fit_to_ellipse(n, d, roi_img)
@@ -149,7 +240,27 @@ def get_cut_pixels(n, d, roi_img):
     return coords[y].astype(np.uint16)
 
 def apply_cuts(cuts, model, identities=None):
-    """Apply the cuts to the ROIs of the model image and all identity frames."""
+    """
+    Apply the cuts to the ROIs of the model image and all identity frames.
+    
+    Parameters
+    ----------
+    cuts : dict
+        Dictionary mapping axon identities (keys) to a list of cuts (values).
+        Each element of the list corresponds to a cut, i.e. a tuple of line 
+        parameters (n, d). The list have to be sorted by ascending distance d.
+    model : InternalModel
+        Internal model of the tracker.
+    identities : ndarray (optional)
+        Stack of label images corresponding to tracked ROI identities.
+    
+    Returns
+    -------
+    new_model_image : ndarray
+        Image of the model after applying the cuts. Note that model is not modified.
+    new_identities : ndarray (optional)
+        Stack of label images corresponding to tracked ROI identities after the cuts.
+    """
     new_model_image = model.image.copy()
     if identities is not None:
         new_identities = identities.copy()

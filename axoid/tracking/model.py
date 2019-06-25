@@ -10,9 +10,6 @@ Created on Thu Mar 14 15:03:31 2019
 
 import warnings
 import numpy as np
-#TODO: remove matplotlib/pyplot after testing
-import matplotlib
-import matplotlib.pyplot as plt
 from skimage import measure
 from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
@@ -67,7 +64,23 @@ class _Axon():
         self._update_iter = 0
     
     def update_axon(self, id_frame, id_seg, region, time_idx=None):
-        """Update the axon's properties with the given identity frame."""
+        """
+        Update the axon's properties with the given identity frame.
+        
+        Parameters
+        ----------
+        id_frame : ndarray
+            RGB input frame.
+        id_seg : ndarray
+            ROI segmentation of id_frame, with identities. The label of each
+            ROI corresponds to its axon id.
+        region : RegionProperties
+            skimage.measure region properties used to extract axon properties.
+            Its label should be the same as this axon id.
+        time_idx : int (optional)
+            Time index of the current frame, useful for keeping track of the
+            GCaMP dynamic.
+        """
         # Print a warning if identity is different than region's label
         if self.id != region.label:
             warnings.warn("Axon %d is updated with a region labelled %d." % (self.id, region.label), 
@@ -146,7 +159,20 @@ class InternalModel():
         self.TH_DUMMY = 0.3 # threshold for dummy axon
     
     def initialize(self, id_frame, id_seg, time_idx=None):
-        """(Re-)Initialize the model with the given identity frame."""
+        """
+        (Re-)Initialize the model with the given identity frame.
+        
+        Parameters
+        ----------
+        id_frame : ndarray
+            RGB input frame.
+        id_seg : ndarray
+            ROI segmentation of id_frame, with identities. The label of each
+            ROI corresponds to its axon id.
+        time_idx : int (optional)
+            Time index of the current frame, useful for keeping track of the
+            GCaMP dynamic.
+        """
         # Re-initialize the model
         self.axons = []
         self.image = np.zeros(id_seg.shape, np.uint8)
@@ -168,8 +194,28 @@ class InternalModel():
         # Draw the model
         self._draw()
     
-    def _inner_cost(self, x_roi, x_model, area_roi, area_model, frame_height):
-        """Compute the inner cost matrix for assignments."""
+    def inner_cost(self, x_roi, x_model, area_roi, area_model, frame_height):
+        """
+        Compute the inner cost matrix for assignments.
+        
+        Parameters
+        ----------
+        x_roi : ndarray
+            Feature matrix of the frame's ROIs positions w.r.t. current ROI.
+        x_model : ndarray
+            Feature matrix of the model's axons positions w.r.t. current axon.
+        area_roi : ndarray
+            Array of the frame's ROIs areas.
+        area_model : ndarray
+            Array of the model's axons areas.
+        frame_height : int
+            Height of the current frame in pixel.
+        
+        Returns
+        -------
+        inner_cost_matrix : ndarray
+            The cost matrix of the inner loop, w.r.t. current ROI and axon.
+        """
         # Distance cost
         cost_dist = cdist(x_roi, x_model) / self.NORM_DIST
         # Angle cost
@@ -186,8 +232,22 @@ class InternalModel():
         
         return self.W_DIST * cost_dist + self.W_ANGLE * cost_angle + self.W_AREA * cost_area
     
-    def outer_cost(self, frame, seg, debug=False):
-        """Compute the outer cost matrix for assignments."""
+    def outer_cost(self, frame, seg):
+        """
+        Compute the outer cost matrix for assignments.
+        
+        Parameters
+        ----------
+        frame : ndarray
+            RGB input frame.
+        seg : ndarray
+            Binary segmentation of frame.
+        
+        Returns
+        -------
+        outer_cost_matrix : ndarray
+            The cost matrix of the outer loop for assignments.
+        """
         # Extract ROIs
         labels = measure.label(seg, connectivity=1)
         regions = measure.regionprops(labels, coordinates='rc')
@@ -199,9 +259,6 @@ class InternalModel():
         
         # Construct the outer cost matrix by looping over ROIs and axons
         cost_matrix = self.W_AREA * np.abs(areas[:, np.newaxis] - model_areas[np.newaxis, :])
-        if debug:
-            print(areas, model_areas)
-            print("Area cost:\n%s" % cost_matrix)
         # Only compute inner cost if more than 1 ROI and axon
         if len(regions) > 1 and len(self.axons) > 1:
             for i in range(len(regions)):
@@ -216,7 +273,7 @@ class InternalModel():
                     area_model = np.delete(model_areas, k)
                     
                     # Hungarian assignment method
-                    in_cost_matrix = self._inner_cost(x_roi, x_model, 
+                    in_cost_matrix = self.inner_cost(x_roi, x_model, 
                                                      area_roi, area_model, 
                                                      seg.shape[0])
                     in_th_dummy = 1.1 * max(self.TH_DUMMY, in_cost_matrix.min())
@@ -238,17 +295,32 @@ class InternalModel():
                 
         return cost_matrix
     
-    def match_frame(self, frame, seg, time_idx=None, debug=False, return_debug=False):
-        """Match axons of the given frame to the model's."""
+    def match_frame(self, frame, seg, time_idx=None):
+        """
+        Match axons of the given frame to the model's.
+        
+        Parameters
+        ----------
+        frame : ndarray
+            RGB input frame.
+        seg : ndarray
+            Binary segmentation of frame.
+        time_idx : int (optional)
+            Time index of the current frame, useful for keeping track of the
+            GCaMP dynamic.
+        
+        Returns
+        -------
+        identities : ndarray
+            Identity frame, where the value of pixels indicate their axon 
+            affiliation (0 is background).
+        """
         # If no ROI, do nothing
         if seg.sum() == 0:
             return np.zeros(seg.shape, np.uint8)
-        if debug:
-            id_cmap = matplotlib.cm.get_cmap('viridis')
-            id_cmap.set_under([0,0,0])
                 
         # Assign identities through the hungarian method
-        cost_matrix = self.outer_cost(frame, seg, debug=debug)
+        cost_matrix = self.outer_cost(frame, seg)
         row_ids, col_ids = linear_sum_assignment(cost_matrix)
         
         # Build a dictionary mapping ROI labels to axon IDs
@@ -262,25 +334,6 @@ class InternalModel():
             else:
                 ids.update({region.label: 0})
         
-        if debug:
-            print(cost_matrix[:,:len(self.axons)], cost_matrix[0,len(self.axons)], self.TH_DUMMY)
-            print(row_ids, col_ids, ids)
-            print(cost_matrix[row_ids, col_ids],
-                  np.mean([cost_matrix[row_ids[j], col_ids[j]]
-                  for j in range(len(row_ids)) if col_ids[j] < len(self.axons)]))
-            identities = np.zeros(seg.shape, np.uint8)
-            for region in regions:
-                roi = labels == region.label
-                identities[roi] = ids[region.label]
-            plt.figure(figsize=(8,4))
-            plt.subplot(121); plt.title("model")
-            plt.imshow(self.image, cmap=id_cmap, vmin=1, vmax=self.image.max())
-            plt.subplot(122); plt.title("identity")
-            plt.imshow(identities, cmap=id_cmap, vmin=1, vmax=self.image.max())
-            plt.show()
-        if return_debug:
-            return cost_matrix, row_ids, col_ids
-        
         # Make identity image, and return it
         identities = np.zeros(seg.shape, np.uint8)
         for region in regions:
@@ -289,7 +342,20 @@ class InternalModel():
         return identities
     
     def update(self, id_frame, id_seg, time_idx=None):
-        """Update the model based on the identity frame."""
+        """
+        Update the model based on the identity frame.
+        
+        Parameters
+        ----------
+        id_frame : ndarray
+            RGB input frame.
+        id_seg : ndarray
+            ROI segmentation of id_frame, with identities. The label of each
+            ROI corresponds to its axon id.
+        time_idx : int (optional)
+            Time index of the current frame, useful for keeping track of the
+            GCaMP dynamic.
+        """
         # Axons' identity to index mapping
         id_to_idx = {self.axons[i].id: i for i in range(len(self.axons))}
         
