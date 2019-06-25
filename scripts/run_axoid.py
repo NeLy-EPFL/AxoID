@@ -222,13 +222,12 @@ def detection(args, name, input_data, finetuning):
     device = torch.device("cuda:0" if torch.cuda.is_available() and not args.no_gpu else "cpu")
     if args.verbose:
         print("PyTorch device:", device)
-    model_name = "190510_aug_synth"
     
     outdir = os.path.join(args.experiment, "output", "axoid_internal", name)
     
     # Load initial model
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
-                             "..", "data", "models", model_name)
+                             "..", "model")
     model = load_model(model_dir, input_channels="RG", u_depth=U_DEPTH, 
                        out1_channels=OUT1_CHANNELS, device=device)
     
