@@ -17,7 +17,7 @@ from PyQt5.QtGui import QImage, QPixmap
 from axoid.utils.image import to_npint
 
     
-def _array2pixmap(array):
+def array2pixmap(array):
     """Convert a numpy image array to a QPixmap."""
     img = to_npint(array)
     if img.ndim == 2:
@@ -37,30 +37,35 @@ def _array2pixmap(array):
 class LabelImage(QLabel):
     """QLabel for images which rescale with window at fixed height/width ratio."""
     
-    def __init__(self, image, *args, framebox=True, scaling_mode=Qt.KeepAspectRatio, **kwargs):
+    def __init__(self, image, *args, framestyle=QLabel.Box, scaling_mode=Qt.KeepAspectRatio, **kwargs):
         """Initialize the label with the image."""
         super().__init__(*args, **kwargs)
         self.scaling_mode = scaling_mode
         
         # Initialize the pixmap
         if isinstance(image, str):
-            self._pixmap = QPixmap(image)
+            self.pixmap_ = QPixmap(image)
         elif isinstance(image, np.ndarray):
-            self._pixmap = _array2pixmap(image)
-        scaledPix = self._pixmap.scaled(self.size(), self.scaling_mode)
+            self.pixmap_ = array2pixmap(image)
+        scaledPix = self.pixmap_.scaled(self.size(), self.scaling_mode)
         self.setPixmap(scaledPix)
         
 #        self.setScaledContents(True)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         
         # Add a frame (required to have correct behaviour in Layouts)
-        if framebox:
-            self.setFrameStyle(QLabel.Box)
+        self.setFrameStyle(framestyle)
     
     def resizeEvent(self, event):
         """Resize pixmap with the label."""
-        scaledPix = self._pixmap.scaled(event.size(), self.scaling_mode)
+        scaledPix = self.pixmap_.scaled(event.size(), self.scaling_mode)
         self.setPixmap(scaledPix)
+    
+    def update_(self):
+        """Redraw the scaled pixmap."""
+        scaledPix = self.pixmap_.scaled(self.size(), self.scaling_mode)
+        self.setPixmap(scaledPix)
+        self.update()
     
     def changeFrame(self, num):
         """To be implemented by child classes."""
@@ -83,8 +88,8 @@ class LabelStack(LabelImage):
     def changeFrame(self, num):
         """Change the stack frame to display."""
         size = self.pixmap().size()
-        self._pixmap = _array2pixmap(self.stack[num])
-        scaledPix = self._pixmap.scaled(size, Qt.KeepAspectRatio)
+        self.pixmap_ = array2pixmap(self.stack[num])
+        scaledPix = self.pixmap_.scaled(size, Qt.KeepAspectRatio)
         self.setPixmap(scaledPix)
 
 
@@ -99,16 +104,16 @@ class VerticalScrollImage(QScrollArea):
         
         # Initialize image widget
         if isinstance(image, str):
-            self._pixmap = QPixmap(image)
+            self.pixmap_ = QPixmap(image)
         elif isinstance(image, np.ndarray):
-            self._pixmap = _array2pixmap(image)
+            self.pixmap_ = array2pixmap(image)
         lbl = QLabel()
-        lbl.setPixmap(self._pixmap)
+        lbl.setPixmap(self.pixmap_)
         lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         
         self.setWidget(lbl)
     
     def resizeEvent(self, event):
         """Resize the image to fit the scroll area with fixed ratio."""
-        scaledPix = self._pixmap.scaled(event.size(), Qt.KeepAspectRatioByExpanding)
+        scaledPix = self.pixmap_.scaled(event.size(), Qt.KeepAspectRatioByExpanding)
         self.widget().setPixmap(scaledPix)

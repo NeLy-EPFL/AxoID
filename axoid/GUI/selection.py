@@ -33,7 +33,9 @@ class SelectionPage(AxoidPage):
     def __init__(self, *args, **kwargs):
         """Initialize the selection page."""
         super().__init__(*args, **kwargs)
-        
+    
+    def initUI(self):
+        """Initialize the interface."""
         # Get max number of axons amongst outputs
         self.n_axons_max = -np.inf
         for folder in ["raw", "ccreg", "warped"]:
@@ -75,10 +77,6 @@ class SelectionPage(AxoidPage):
         self.canvas = FigureCanvas(fig)
         self.canvas.setStyleSheet("background-color:transparent;")
         
-        self.initUI()
-    
-    def initUI(self):
-        """Initialize the interface."""
         ## Left display
         for row in [1, 2, 3]:
             self.left_display.setRowStretch(row, 1)
@@ -170,8 +168,10 @@ class SelectionPage(AxoidPage):
                     self.choice_widgets[folder] = LabelImage(image)
                 else:
                     self.choice_widgets[folder] = LabelStack(image)
+                    self.choice_widgets[folder].changeFrame(self.nframe_sld.value())
             else:
                     self.choice_widgets[folder] = LabelStack(image)
+                    self.choice_widgets[folder].changeFrame(self.nframe_sld.value())
             
             
             self.choice_layouts[folder].addWidget(self.choice_widgets[folder],

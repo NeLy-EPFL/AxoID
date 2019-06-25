@@ -7,6 +7,9 @@ Created on Tue Jun 18 17:16:11 2019
 @author: nicolas
 """
 
+import os.path
+import shutil
+
 from PyQt5.QtWidgets import QHBoxLayout
 
 from .multipage import MultiPageWidget
@@ -32,6 +35,7 @@ class AxoIDWindow(MultiPageWidget):
         self.addPage(CorrectionPage(self.experiment), PAGE_CORRECTION)
         self.addPage(AnnotationPage(self.experiment), PAGE_ANNOTATION)
         
+        self.pageWidgets[PAGE_SELECTION].initUI()
         self.initUI()
         
         # Change page
@@ -51,4 +55,11 @@ class AxoIDWindow(MultiPageWidget):
         self.wh_ratio = width / height  # 16:9
         self.resize(width, height)
         self.show()
-        
+    
+    def closeEvent(self, event):
+        """Clean before quitting the GUI."""
+        # Delete the gui/ result folders
+        for folder in ["axoid_internal", "GC6_auto", "ROI_auto"]:
+            gui_path = os.path.join(self.experiment, "output", folder, "gui")
+            if os.path.isdir(gui_path):
+                shutil.rmtree(gui_path)

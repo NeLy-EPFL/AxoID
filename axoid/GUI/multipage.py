@@ -21,6 +21,10 @@ from PyQt5.QtWidgets import (QWidget, QStackedWidget, QHBoxLayout, QVBoxLayout,
 class PageWidget(QWidget):
     """PyQt widget corresponding to a single page for multi-page widgets."""
     changedPage = pyqtSignal(int)
+    quitApp = pyqtSignal()
+    
+    def initUI(self):
+        """Function to be implemented in child classes to create the UI."""
     
     def emitChangedPage(self, page):
         """Return a function to emit a changedPage signal to the given page."""
@@ -42,6 +46,7 @@ class MultiPageWidget(QWidget):
     def addPage(self, pageWidget, pageID, *args, **kwargs):
         """Add the page."""
         pageWidget.changedPage.connect(self.changePage)
+        pageWidget.quitApp.connect(self.close)
         self.stackedWidget.addWidget(pageWidget, *args, **kwargs)
         self.pageWidgets.update({pageID: pageWidget})
     
@@ -53,6 +58,7 @@ class MultiPageWidget(QWidget):
     def changePage(self, pageID):
         """Change the current page."""
         self.stackedWidget.setCurrentWidget(self.pageWidgets[pageID])
+        self.pageWidgets[pageID].initUI()
 
 
 class AxoidPage(PageWidget):

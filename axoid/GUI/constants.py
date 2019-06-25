@@ -19,7 +19,7 @@ PAGE_ANNOTATION = 4     # manual annotations
 # Paths to different data for display choices
 CHOICE_PATHS = {#"AVG_RGB": os.path.join("2Pimg"),
                 #"AVG_tdTom": os.path.join("2Pimg"),
-                #"input": os.path.join("2Pimg"),
+                "input": os.path.join("output", "axoid_internal", "%s", "input.tif"),
                 "segmentation": os.path.join("output", "axoid_internal", "%s", "segmentations.tif"),
                 "rgb_init": os.path.join("output", "axoid_internal", "%s", "rgb_init.tif"),
                 "seg_init": os.path.join("output", "axoid_internal", "%s", "seg_init.tif"),
@@ -31,3 +31,7 @@ CHOICE_PATHS = {#"AVG_RGB": os.path.join("2Pimg"),
 
 # Colormap to use for displaying model and identities images
 ID_CMAP = "viridis"
+
+# Fluorescence extraction
+BIN_S = 10.0           # bin length for baseline computation (s)
+RATE_HZ = 2.418032787  # acquisition rate of 2-photon data (Hz)
