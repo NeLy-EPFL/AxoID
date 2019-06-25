@@ -480,7 +480,7 @@ def process(args, name, input_data, fluo_data=None, finetuning=True):
     if args.verbose and args.timeit:
         print("Fluorescence extraction took %d s." % (time.time() - substart))
     
-    # Save all results to folder
+    # Save results to folder
     save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR)
     
     if args.verbose and args.timeit:

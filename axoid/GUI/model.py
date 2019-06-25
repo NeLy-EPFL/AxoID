@@ -21,10 +21,10 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (QLabel, QHBoxLayout, QVBoxLayout, QComboBox, QGroupBox,
                              QGridLayout, QPushButton, QRadioButton, QButtonGroup,
-                             QAbstractButton, QMessageBox)
+                             QAbstractButton, QMessageBox, QProgressDialog)
 import cv2
 
-from .constants import PAGE_CORRECTION, CHOICE_PATHS, ID_CMAP, BIN_S, RATE_HZ
+from .constants import PAGE_SELECTION, PAGE_CORRECTION, CHOICE_PATHS, ID_CMAP, BIN_S, RATE_HZ
 from .image import array2pixmap, LabelImage, LabelStack, VerticalScrollImage
 from .multipage import AxoidPage
 from axoid.tracking.cutting import fit_line, norm_to_ellipse, get_cut_pixels
@@ -184,11 +184,15 @@ class ModelPage(AxoidPage):
         correction_btn = QPushButton("Frame correction")
         correction_btn.setToolTip("Finish model correction and move on to frame correction")
         correction_btn.clicked.connect(self.gotoFrameCorrection)
+        selection_btn = QPushButton("Back to selection")
+        selection_btn.setToolTip("Return to the output selection page")
+        selection_btn.clicked.connect(self.gobackSelection)
         
         fn_vbox.addLayout(hbox)
         fn_vbox.addWidget(finish_btn)
         fn_vbox.addWidget(correction_btn)
         fn_vbox.addStretch(1)
+        fn_vbox.addWidget(selection_btn)
         
         self.right_control.addStretch(1)
         self.right_control.addLayout(general_vbox, stretch=1.5)
@@ -262,11 +266,22 @@ class ModelPage(AxoidPage):
         """Apply the currently drawn cut to the model."""
         self.model_new.applyCut()
     
+    def _get_progress_dialog(self, text, vmin=0, vmax=100):
+        """Return a QProgressDialog and start to display it."""
+        progress = QProgressDialog(text, "", vmin, vmax)
+        progress.setWindowModality(Qt.ApplicationModal)
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        return progress
+    
     def applyChanges(self):
         """Apply the modified model to the entire experiment."""
         if len(self.model_new.changes) == 0:
             return
         self.current_has_changed = True
+        progress = self._get_progress_dialog("Applying changes...")
+        
         ## Re-number ids from 1
         old_ids = np.unique(self.model_new.models[-1])
         old_ids = old_ids[old_ids != 0]
@@ -283,6 +298,8 @@ class ModelPage(AxoidPage):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
             io.imsave(path, new_model)
+        progress.setValue(20)
+        
         ## Modify identities
         # Modify the frames one by one
         path = os.path.join(self.experiment, "output", "axoid_internal",
@@ -299,6 +316,7 @@ class ModelPage(AxoidPage):
                     n, d = change[1]
                     coords = get_cut_pixels(n, d, roi_img)
                     identities[i][coords[:,0], coords[:,1]] = change[2]
+        progress.setValue(30)
         # Renumber ids
         new_identities = identities.copy()
         for old_id, new_id in new_ids.items():
@@ -309,6 +327,7 @@ class ModelPage(AxoidPage):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
             io.imsave(path, new_identities)
+        progress.setValue(40)
         
         ## ROI_auto (raw data + contours)
         path = os.path.join(self.experiment, "output", "axoid_internal",
@@ -317,12 +336,15 @@ class ModelPage(AxoidPage):
         ids = np.unique(new_identities)
         ids = ids[ids != 0]
         input_roi = to_npint(input_data)
+        contour_list = []
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", Warning)
             for i in range(len(input_roi)):
+                contour_list.append([])
                 for n, id in enumerate(ids):
                     roi_img = (new_identities[i] == id)
                     if np.sum(roi_img) == 0:
+                        contour_list[i].append([])
                         continue
                     _, contours, _ = cv2.findContours(roi_img.astype(np.uint8),
                                                       cv2.RETR_LIST,
@@ -332,43 +354,57 @@ class ModelPage(AxoidPage):
                     cv2.drawContours(input_roi[i], contours, -1, (255,255,255), 1)
                     cv2.putText(input_roi[i], str(n), (int(x), int(y)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,255), 1)
+                    contour_list[i].append(contours[0])
         # Save results
         path = os.path.join(self.experiment, "output", "ROI_auto",
                             "gui", "RGB_seg.tif")
         io.imsave(path, input_roi)
+        with open(os.path.join(self.experiment, "output", "GC6_auto", "gui", 
+                               "All_contour_list_dic_Usr.p"), "wb") as f:
+            pickle.dump({"AllContours": contour_list}, f)
+        progress.setValue(60)
         
         ## Fluorescence traces
         len_baseline = int(BIN_S * RATE_HZ + 0.5) # number of frames for baseline computation
-        path = os.path.join(self.experiment, "output", "axoid_internal",
+        fluo_path = os.path.join(self.experiment, "output", "axoid_internal",
                             "gui", "input_fluo.tif")
-        if os.path.isfile(path):
-            fluo_data = imread_to_float(path)
+        if os.path.isfile(fluo_path):
+            fluo_data = imread_to_float(fluo_path)
             tdtom, gcamp = get_fluorophores(fluo_data, new_identities)
         else:
+            io.imsave("/home/nicolas/Desktop/input_data.tif", input_data)
+            input_data = input_data.astype(np.float32) / input_data.max()
             tdtom, gcamp = get_fluorophores(input_data, new_identities)
+        progress.setValue(70)
         dFF, dRR = compute_fluorescence(tdtom, gcamp, len_baseline)
         # Save results
         save_fluorescence(os.path.join(self.experiment, "output", "GC6_auto", "gui"),
                       tdtom, gcamp, dFF, dRR)
+        progress.setValue(80)
         
         ## Re-load results in window
         self.model_new.reset(new_model)
         self.identities_new.stack = to_id_cmap(new_identities, cmap=ID_CMAP, vmax=new_model.max())
+        progress.setValue(90)
         self.identities_new.changeFrame(self.nframe_sld.value())
         self.combo_choice.activated[str].emit(self.combo_choice.currentText())
+        progress.setValue(100)
     
     def saveChanges(self):
         """Save changes applied to the entire experiment to the final/ folder."""
         if not self.current_has_changed:
             return
         self.current_has_changed = False
+        progress = self._get_progress_dialog("Saving changes...")
+        
         # Copy current results into final/
-        for folder in ["axoid_internal", "GC6_auto", "ROI_auto"]:
+        for i, folder in enumerate(["axoid_internal", "GC6_auto", "ROI_auto"]):
             final_path = os.path.join(self.experiment, "output", folder, "final")
             gui_path = os.path.join(self.experiment, "output", folder, "gui")
             if os.path.isdir(final_path):
                 shutil.rmtree(final_path)
             shutil.copytree(gui_path, final_path)
+            progress.setValue(15 * (i+1))
         
         # Reload folder data to display
         model_path = os.path.join(self.experiment, "output", "axoid_internal",
@@ -376,14 +412,18 @@ class ModelPage(AxoidPage):
         model_img = to_id_cmap(io.imread(model_path), cmap=ID_CMAP)
         self.model.pixmap_ = array2pixmap(model_img)
         self.model.update_()
+        progress.setValue(60)
         
         identities_path = os.path.join(self.experiment, "output", "axoid_internal",
                                        "final", "identities.tif")
         identities_img = to_id_cmap(io.imread(identities_path), cmap=ID_CMAP)
+        progress.setValue(75)
         self.identities.stack = identities_img
         self.identities.changeFrame(self.nframe_sld.value())
+        progress.setValue(90)
         
         self.combo_choice.activated[str].emit(self.combo_choice.currentText())
+        progress.setValue(100)
     
     def _unsaved_changes(self):
         """Verify if there are unsaved changes, and ask user to continue if so."""
@@ -410,6 +450,11 @@ class ModelPage(AxoidPage):
         # End of model correction, go to frame correction page
         if not self._unsaved_changes():
             self.changedPage.emit(PAGE_CORRECTION)
+    
+    def gobackSelection(self):
+        """Return to the output selection page."""
+        if not self._unsaved_changes():
+            self.changedPage.emit(PAGE_SELECTION)
 
 
 class ModelImage(LabelImage):

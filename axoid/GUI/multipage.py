@@ -26,11 +26,11 @@ class PageWidget(QWidget):
     def initUI(self):
         """Function to be implemented in child classes to create the UI."""
     
-    def emitChangedPage(self, page):
-        """Return a function to emit a changedPage signal to the given page."""
-        def emit(state):
-            self.changedPage.emit(page)
-        return emit
+#    def emitChangedPage(self, page):
+#        """Return a function to emit a changedPage signal to the given page."""
+#        def emit(state):
+#            self.changedPage.emit(page)
+#        return emit
 
 class MultiPageWidget(QWidget):
     """Base PyQt widget for multi-pages."""
@@ -57,6 +57,7 @@ class MultiPageWidget(QWidget):
     
     def changePage(self, pageID):
         """Change the current page."""
+        self.stackedWidget.currentWidget().reset()
         self.stackedWidget.setCurrentWidget(self.pageWidgets[pageID])
         self.pageWidgets[pageID].initUI()
 
@@ -68,7 +69,10 @@ class AxoidPage(PageWidget):
         """Initialize the selection page."""
         super().__init__(*args, **kwargs)
         self.experiment = experiment
+        self.reset()
         
+    def reset(self):
+        """Reset this page UI."""
         self.len_exp = len(io.imread(os.path.join(self.experiment, "2Pimg", "RGB.tif")))
         # Layout/widget for displaying a choice of image
         self.choice_layouts = dict()
@@ -115,6 +119,8 @@ class AxoidPage(PageWidget):
         self.top_hbox.addLayout(self.left_vbox, stretch=1)
         self.top_hbox.addLayout(self.right_control, stretch=0)
         
+        if self.layout() is not None:
+            QWidget().setLayout(self.layout())
         self.setLayout(self.top_hbox)
     
     def changeFrame(self, num):

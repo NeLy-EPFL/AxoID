@@ -131,23 +131,23 @@ def save_fluorescence(path, tdtom, gcamp, dFF, dRR):
             ymin = min(0, np.nanmin(traces[:, 1:]) - 0.05 * np.abs(np.nanmin(traces[:, 1:])))
             ymax = np.nanmax(traces[:, 1:]) * 1.05
         
-        fig = plt.figure(figsize=(8, 4 * len(traces)), facecolor='white', dpi=300)
+        fig, axes = plt.subplots(len(traces), 1, 'all', 'all',
+                                 figsize=(8, 4 * len(traces)), facecolor='white', dpi=300)
         fig.subplots_adjust(left=0.2, right = 0.9, wspace = 0.3, hspace = 0.3)
         
-        for i in range(len(traces)):
-            ax = plt.subplot(len(traces), 1, i+1)
-            plt.axhline(linestyle='dashed', color='gray', linewidth=0.5)
-            plt.plot(traces[i], color, linewidth=1)
-            plt.xlim(0, 1.05*(len(traces[i]) - 1))
-            plt.ylabel("ROI#%d\n" % i + ylabel, size=10, color=color)
-            plt.ylim(ymin, ymax)
+        for i, ax in enumerate(axes):
+            ax.axhline(linestyle='dashed', color='gray', linewidth=0.5)
+            ax.plot(traces[i], color, linewidth=1)
+            ax.set_xlim(0, 1.05*(len(traces[i]) - 1))
+            ax.set_ylabel("ROI#%d\n" % i + ylabel, size=10, color=color)
+            ax.set_ylim(ymin, ymax)
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
             if i < len(traces) - 1:
                 ax.spines['bottom'].set_visible(False)
                 ax.get_xaxis().set_visible(False)
             else:
-                plt.xlabel("Frame", size=10)
+                ax.set_xlabel("Frame", size=10)
                 
         fig.savefig(os.path.join(path, filename + ".png"),
                     bbox_inches='tight', facecolor=fig.get_facecolor(),
