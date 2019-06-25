@@ -29,7 +29,16 @@ from axoid.detection.deeplearning.train import train, train_plot
 from axoid.detection.deeplearning.test import evaluate
 
 def main(args, model=None):
-    """Main function of the run_train script, can be used as is with correct arguments (and optional model)."""
+    """
+    Main function of the run_train script, can be used as is with correct arguments (and optional model).
+    
+    Parameters
+    ----------
+    args : arguments
+        Arguments passed to the script through the command line.
+    model : PyTorch model (optional)
+        PyTorch model to train. If not given, one will be made in the code.
+    """
     ## Initialization
     if args.timeit:
         start_time = time.time()

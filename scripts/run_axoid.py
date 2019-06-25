@@ -18,7 +18,6 @@ import argparse
 import random
 
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy import stats
 from skimage import filters, io, measure, morphology
 import cv2
@@ -61,7 +60,27 @@ RATE_HZ = 2.418032787  # acquisition rate of 2-photon data (Hz)
 
 
 def get_data(args):
-    """Return the raw and warped experimental data."""
+    """
+    Return the experimental data.
+    
+    Parameters
+    ----------
+    args : arguments
+        Arguments passed to the script through the command line.
+    
+    Returns
+    -------
+    rgb_input : ndarray (float)
+        Stack of images with the raw experimental data.
+    ccreg_input : ndarray (float)
+        Stack of images with the cross-correlation registered experimental data.
+    wrp_input : ndarray (float)
+        Stack of images with the optic flow warped experimental data,
+        for detection and tracking.
+    wrp_fluo : ndarray (float)
+        Stack of images with the optic flow warped experimental data,
+        for fluorescence extraction.
+    """
     if args.verbose:
         print("\nGetting input data")
     rgb_path = os.path.join(args.experiment, "2Pimg", "RGB.tif")
@@ -104,6 +123,7 @@ def get_data(args):
     else:
         wrp_input = None
     # Look for warped data to use for fluorescence computation
+    # This is different from warped_RGB.tif which has been manually edited
     if not args.force_warp:
         if args.warpdir is not None:
             folder = args.warpdir
@@ -127,7 +147,7 @@ def get_data(args):
             wrp_tdtom = imread_to_float(os.path.join(folder, "warped1.tif"))
             wrp_gcamp = imread_to_float(os.path.join(folder, "warped2.tif"))
             wrp_fluo = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
-    # If force or no data, apply warping
+    # If forcing warping or no data is available, apply warping
     if args.force_warp or wrp_fluo is None:
         if args.verbose:
             print("Starting optic flow warping of input data")
@@ -158,7 +178,7 @@ def get_data(args):
         if args.verbose:
             print("Warping logs saved at %s." % log_path)
         
-        # Check wether the subprocess failed
+        # Then, check wether the subprocess failed
         wrp_process.check_returncode()
         
         # Load outputs of warping, and make a `wrp_input stack`
@@ -168,7 +188,7 @@ def get_data(args):
             "l%dg%d" % (args.warp_l, args.warp_g), "green_warped.tif"))
         wrp_input = np.stack([wrp_tdtom, wrp_gcamp, wrp_gcamp], axis=-1)
         
-        # Re-add the (unwapred) first frame and remove temp folder
+        # Re-add the (unwarped) first frame and remove temp folder
         wrp_tdtom = np.concatenate([rgb_input[np.newaxis,0,...,0], wrp_tdtom], axis=0)
         wrp_gcamp = np.concatenate([rgb_input[np.newaxis,0,...,1], wrp_gcamp], axis=0)
         wrp_input = np.concatenate([rgb_input[np.newaxis,0], wrp_input], axis=0)
@@ -215,7 +235,31 @@ def _smooth_frame(frame):
     return out
 
 def detection(args, name, input_data, finetuning):
-    """Detect ROIs and return the binary segmentation."""
+    """
+    Detect ROIs and return the binary segmentation.
+    
+    Parameters
+    ----------
+    args : arguments
+        Arguments passed to the script through the command line.
+    name : str
+        Name of the current folder/type of input to process: "raw", "ccreg", 
+        or "warped".
+    input_data : ndarray
+        Image stack of the input on which to detect ROIs.
+    finetuning : bool
+        If true, will look for similar frames and finetune on them. If False,
+        no finetuning is applied.
+    
+    Returns
+    -------
+    segmentations : ndarray (bool)
+        Stack of binary images representing the ROI detection.
+    rgb_init : ndarray (float)
+        Frame to use to initialize the tracker.
+    seg_init : ndarray (float)
+        Binary detection of `rgb_init` to use to initialize the tracker.
+    """
     if args.verbose:
         print("\nDetection of ROIs")
     # Initialiaze PyTorch
@@ -342,7 +386,36 @@ def detection(args, name, input_data, finetuning):
 
 
 def tracking(args, name, input_data, segmentations, rgb_init, seg_init, finetuning):
-    """Track and return ROI identities."""   
+    """
+    Track and return ROI identities.
+    
+    Parameters
+    ----------
+    args : arguments
+        Arguments passed to the script through the command line.
+    name : str
+        Name of the current folder/type of input to process: "raw", "ccreg", 
+        or "warped".
+    input_data : ndarray
+        Image stack of the input on which to detect ROIs.
+    segmentations : ndarray
+        Stack of binary images of ROI detections.
+    rgb_init : ndarray
+        Frame to use to initialize the tracker model.
+    seg_init : ndarray
+        Segmentation of the frame to use to initialize the tracker model.
+    finetuning : bool
+        If true, will look for similar frames and finetune on them. If False,
+        no finetuning is applied.
+    
+    Returns
+    -------
+    identities : ndarray (uint8)
+        Stack of greyscale images where the grey level corresponds to the
+        identity of the pixel (0 is background, 1 and above are IDs).
+    model : internal model
+        Model of the tracker.
+    """   
     if args.verbose:
         print("\nTracking axon identities") 
     outdir = os.path.join(args.experiment, "output", "axoid_internal", name)
@@ -403,7 +476,29 @@ def tracking(args, name, input_data, segmentations, rgb_init, seg_init, finetuni
 
 
 def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
-    """Save final results."""
+    """
+    Save final results.
+    
+    Parameters
+    ----------
+    args : arguments
+        Arguments passed to the script through the command line.
+    name : str
+        Name of the current folder/type of input to process: "raw", "ccreg", 
+        or "warped".
+    input_data : ndarray
+        Image stack of the input on which to detect ROIs.
+    identities : ndarray
+        Stack of identity images.
+    tdtom : ndarray
+        Time series of tdTom fluorescence values for each axon.
+    gcamp : ndarray
+        Time series of GCaMP fluorescence values for each axon.
+    dFF : ndarray
+        Time series of fluorescence values for each axon, computed as dF/F.
+    dRR : ndarray
+        Time series of fluorescence values for each axon, computed as dR/R.
+    """
     if args.verbose:
         print("Saving results")
     
@@ -445,7 +540,25 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
 
 
 def process(args, name, input_data, fluo_data=None, finetuning=True):
-    """Apply the AxoID pipeline to the data."""
+    """
+    Apply the AxoID pipeline to the data.
+    
+    
+    Parameters
+    ----------
+    args : arguments
+        Arguments passed to the script through the command line.
+    name : str
+        Name of the current folder/type of input to process: "raw", "ccreg", 
+        or "warped".
+    input_data : ndarray
+        Image stack of the input on which to detect ROIs.
+    fluo_data : ndarray
+        Image stack of the experimental data to use for fluorescence extraction.
+    finetuning : bool
+        If true, will look for similar frames and finetune on them. If False,
+        no finetuning is applied.
+    """
     if args.verbose:
         print("\n\t # Processing %s #" % name)
         if args.timeit:
@@ -489,7 +602,14 @@ def process(args, name, input_data, fluo_data=None, finetuning=True):
 
 
 def main(args):
-    """Main function of the AxoID script."""
+    """
+    Main function of the AxoID script.
+    
+    Parameters
+    ----------
+    args : arguments
+        Arguments passed to the script through the command line.
+    """
     # Initialiaze the script
     random.seed(args.seed)
     np.random.seed(args.seed*10 + 1234)

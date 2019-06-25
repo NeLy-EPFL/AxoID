@@ -19,7 +19,15 @@ from axoid.GUI.constants import PAGE_MODEL
 from axoid.GUI.main import AxoIDWindow
 
 def main(args):
-    """Initialize and start the GUI."""
+    """
+    Initialize and start the GUI.
+    
+    Parameters
+    ----------
+    args : arguments
+        Arguments passed to the script through the command line.
+    """
+    # Go to specific pages
     if args.model:
         if not os.path.isdir(os.path.join(args.experiment, "output",
                                           "axoid_internal", "final")):

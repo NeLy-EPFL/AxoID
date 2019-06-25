@@ -5,6 +5,8 @@ Script used to generate weights for pixel-wise loss weighting.
 Weights are rescaled at train time by weight = neg_w + (pos_w - neg_w) * weight,
 so the weights computed here should simply be the relative values to negative and
 positive weighting that are computed before the training.
+neg_w : corresponds to the weight of the negative class (i.e. background)
+pos_w : corresponds to the weight of the positive class (i.e. ROIs)
 
 Created on Wed Feb 20 16:57:32 2019
 
@@ -21,6 +23,7 @@ from axoid.utils.image import imread_to_float, to_npint
 from axoid.detection.deeplearning.data import compute_weights
 
 def main(args):
+    """Generate the weight images."""
     if args.data_dir is None:
         data_dir = "/data/talabot/datasets/datasets_190401_sep"
         sets = ["train", "validation", "test", "synthetic_190401"]

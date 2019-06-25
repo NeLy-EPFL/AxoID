@@ -27,8 +27,7 @@ if __name__ == "__main__":
     n_images = 20
     
     date = time.strftime("%y%m%d", time.localtime())
-#    synth_dir = "/data/talabot/datasets/datasets_190509/synthetic_%s/" % date
-    synth_dir = "/home/user/talabot/workdir/dataset/synthetic_%s/" % date
+    synth_dir = "/data/talabot/datasets/datasets_190510/synthetic_%s/" % date
     
     start = time.time()
     for i in range(n_stacks):
