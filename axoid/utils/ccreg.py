@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 Module containing functions used for registration with cross-correlation.
+For more details, see: Manuel Guizar-Sicairos, Samuel T. Thurman, and 
+James R. Fienup, "Efficient subpixel image registration algorithms," 
+Opt. Lett. 33, 156-158 (2008). 
 Created on Mon Oct 29 10:13:11 2018
 
 @author: nicolas
@@ -17,24 +20,26 @@ def compute_shifts(ref_image, shifted_image, return_error=False):
     Note that shift are going from `shifted_image` to `ref_image`, i.e. shifting
     `shifted_image` by row and col shifts will give back `ref_image`.
     
-    Args:
-        ref_image: ndarray
-            Reference image for the shifts computation, it should be 
-            2-dimensional (i.e., a grayscale image).
-        shifted_image: ndarray
-            Shifted reference image, it should also be 2-dimensional.
-        return_error: bool (default = False)
-            If True, the normalized root-mean-square error between `ref_image` 
-            and `shifted_image` is returned as a third output.
+    Parameters
+    ----------
+    ref_image : ndarray
+        Reference image for the shifts computation, it should be 
+        2-dimensional (i.e., a grayscale image).
+    shifted_image : ndarray
+        Shifted reference image, it should also be 2-dimensional.
+    return_error : bool (default = False)
+        If True, the normalized root-mean-square error between `ref_image` 
+        and `shifted_image` is returned as a third output.
     
-    Returns:
-        row_shift: int
-            The shift in the row coordinate.
-        col_shift: int
-            The shift in the col coordinate.
-        [error]: float, optional
-            The normalized root-mean-square error between `ref_image` 
-            and `shifted_image`
+    Returns
+    -------
+    row_shift : int
+        The shift in the row coordinate.
+    col_shift : int
+        The shift in the col coordinate.
+    [error] : float (optional)
+        The normalized root-mean-square error between `ref_image` 
+        and `shifted_image`.
     
     Translated from MATLAB code written by Manuel Guizar, downloaded from
     http://www.mathworks.com/matlabcentral/fileexchange/18401-efficient-subpixel-image-registration-by-cross-correlation
@@ -81,7 +86,25 @@ def compute_shifts(ref_image, shifted_image, return_error=False):
 
 
 def shift_image(image, row_shift, col_shift):
-    """Shift the image by the given row and col shifts."""
+    """
+    Shift the image by the given row and col shifts.
+    
+    Parameters
+    ----------
+    image : ndarray
+        Image to shift.
+    row_shift : int or float
+        Shift to apply in row dimension.
+    col_shift : int or float
+        Shift to apply in column dimension.
+    
+    Returns
+    -------
+    shifted_image : ndarray
+        Image shifted by the given dimension shifts. Note that it wraps around,
+        meaning that rows/columns that disappear on one side reappear on the
+        other.
+    """
     buf2ft = np.fft.fft2(image, axes=(0, 1))
     nr, nc = buf2ft.shape[:2]
 
@@ -107,31 +130,34 @@ def shift_image(image, row_shift, col_shift):
 def register_stack(stack, ref_num=0, channels=[0,1], return_shifts=False):
     """
     Register the stack using the cross-correlation method.
+    
     For more details, see: Manuel Guizar-Sicairos, Samuel T. Thurman, and 
     James R. Fienup, "Efficient subpixel image registration algorithms," 
     Opt. Lett. 33, 156-158 (2008). 
     
-    Args:
-        stack: ndarray
-            The stack of images. They can be grayscale or color (see `channels`
-            argument).
-        ref_num: int (default = 0)
-            The number of the frame to take as reference. Every frame will be 
-            registered to this one.
-        channels: list of int (default = [0,1])
-            Channels over which to compute the average if the images are color,
-            as the alogorithm requires grayscale images.
-        return_shifts: bool (default = False)
-            If True, the function also returns the list of row and column shifts
-            for each frame in the stack.
+    Parameters
+    ----------
+    stack : ndarray
+        The stack of images. They can be grayscale or color (see `channels`
+        argument).
+    ref_num : int (default = 0)
+        The index of the frame to take as reference. Every frame will be 
+        registered to this one.
+    channels : list of int (default = [0,1])
+        For color images, list of channels that will be averaged to get a
+        greyscale input, as the algorithm requires grayscale images.
+    return_shifts : bool (default = False)
+        If True, the function also returns the list of row and column shifts
+        for each frame in the stack.
           
-    Returns:
-        reg_stack: ndarray
-            The registered stack to the reference frame.
-        [row_list]: list, optional
-            The list of row shifts for all frames.
-        [col_list]: list, optional
-            The list of col shifts for all frames.
+    Returns
+    -------
+    reg_stack : ndarray
+        The registered stack to the reference frame.
+    [row_list] : list (optional)
+        The list of row shifts for all frames.
+    [col_list] : list (optional)
+        The list of column shifts for all frames.
     """
     reg_stack = np.zeros(stack.shape, dtype=stack.dtype)
     

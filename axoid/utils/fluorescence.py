@@ -63,7 +63,7 @@ def get_fluorophores(rgb_stack, identities):
 
 def compute_fluorescence(tdtom, gcamp, len_baseline):
     """
-    Compute and return dF/F and dR/R fluorescence traces.
+    Compute and return the fluorescence traces computed as dF/F and dR/R.
     
     Parameters
     ----------
@@ -110,7 +110,28 @@ def compute_fluorescence(tdtom, gcamp, len_baseline):
     return dFF, dRR
 
 def save_fluorescence(path, tdtom, gcamp, dFF, dRR):
-    """Save the fluorescence traces in the experiment folder."""
+    """
+    Save the fluorescence traces in the given folder.
+    
+    It will save the traces as dictionaries and plots.
+    
+    Parameters
+    ----------
+    path : str
+        Path to the folder in which the data will be saved.
+        E.g.: /path/to/experiment/output/GC6_auto/
+    tdtom : ndarray
+        Time series of average tdTomato intensity for each axon. If an axon is 
+        not present on a frame, its intensity is set to np.nan for that frame.
+        Shape is n_axons x n_images.
+    gcamp : ndarray
+        Same, but for the GCaMP fluorohpore.
+    dFF : ndarray
+        Fluorescence traces for each axon computed as dF/F, in percent.
+        Shape is n_axons x n_images.
+    dRR : ndarray
+        Same, but computed as dR/R.
+    """
     # Save traces
     def save_traces(traces, filename):
         """Pickle and save the traces under filename.pkl."""

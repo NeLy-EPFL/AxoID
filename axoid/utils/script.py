@@ -8,12 +8,33 @@ Created on Thu Nov  1 16:03:09 2018
 """
 
 class Arguments:
-    """Container object that stores arguments through its attributes.
+    """
+    Container object that stores arguments through its attributes.
     
-    Useful for simulating command line arguments passed to a script."""
+    Useful for simulating command line arguments passed to a script.
+    E.g., if the script is as follow:
+    "
+    def main(args):
+        # do stuff
+    
+    if __name__ == "__main__":
+        args = parser.parse_args()
+        main(args)
+    "
+    main() can be imported from the exterior and used. However, it requires 
+    'args', which can be simulated using this class.
+    """
     
     def __init__(self, **kwargs):
-        """Create attributes equivalent to keyword arguments."""
+        """
+        Create attributes equivalent to keyword arguments.
+        
+        Examples
+        --------
+        `>>> args = Arguments(a="a string", b=1)`
+        `>>> print(args)`
+        `Arguments(a='a string', b=1)`
+        """
         for key, value in kwargs.items():
             self.__setattr__(key, value)
     

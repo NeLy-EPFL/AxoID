@@ -14,7 +14,29 @@ from skimage import measure
 #%% Metrics for ROI binary detection
 
 def loss_mae(predictions, targets, reduction='mean'):
-    """Compute the (Mean) Average Error between predictions and targets.""" 
+    """
+    Compute the (Mean) Average Error between predictions and targets.
+    
+    Parameters
+    ----------
+    predictions : ndarray
+        Array of the predictions. Can be multi-dimensional.
+    targets : ndarray
+        Array of the targets. Same dimensions as predictions.
+    reduction : str (default = "mean")
+        Type of reduction to apply to the loss:
+           - "elementwise_mean", "mean", "ave", "average": average of the single
+           element's loss
+           - "sum": sum of the single element's loss
+           - None, "none", "array", "no_reduction", "full": array of each
+           element's loss
+    
+    Returns
+    -------
+    loss : float or ndarray
+        MAE loss of the predictions compared to targets. See reduction for 
+        details of the returned value.
+    """ 
     if reduction in ["elementwise_mean", "mean", "ave", "average"]:
         return np.abs(targets - predictions).mean()
     elif reduction in ["sum"]:
@@ -25,7 +47,29 @@ def loss_mae(predictions, targets, reduction='mean'):
         raise ValueError("""Unknown reduction method "%s".""" % reduction)
 
 def loss_l2(predictions, targets, reduction='mean'):
-    """Compute the L2-norm loss between predictions and targets."""
+    """
+    Compute the L2-norm loss between predictions and targets.
+    
+    Parameters
+    ----------
+    predictions : ndarray
+        Array of the predictions. Can be multi-dimensional.
+    targets : ndarray
+        Array of the targets. Same dimensions as predictions.
+    reduction : str (default = "mean")
+        Type of reduction to apply to the loss:
+           - "elementwise_mean", "mean", "ave", "average": average of the single
+           element's loss
+           - "sum": sum of the single element's loss
+           - None, "none", "array", "no_reduction", "full": array of each
+           element's loss
+    
+    Returns
+    -------
+    loss : float or ndarray
+        L2-norm loss of the predictions compared to targets. See reduction for 
+        details of the returned value.
+    """
     loss = []
     for i in range(len(targets)):
         loss.append(np.linalg.norm(targets[i] - predictions[i]))
@@ -40,7 +84,29 @@ def loss_l2(predictions, targets, reduction='mean'):
         raise ValueError("""Unknown reduction method "%s".""" % reduction)
 
 def dice_coef(predictions, targets, reduction='mean'):
-    """Compute the Dice coefficient between predictions and targets."""
+    """
+    Compute the Dice coefficient between predictions and targets.
+    
+    Parameters
+    ----------
+    predictions : ndarray
+        Array of the predictions. Should be NxHxW.
+    targets : ndarray
+        Array of the targets. Same dimensions as predictions.
+    reduction : str (default = "mean")
+        Type of reduction to apply to the loss:
+           - "elementwise_mean", "mean", "ave", "average": average of the single
+           element's loss
+           - "sum": sum of the single element's loss
+           - None, "none", "array", "no_reduction", "full": array of each
+           element's loss
+    
+    Returns
+    -------
+    coef : float or ndarray
+        Dice coefficient of the predictions compared to targets. See reduction for 
+        details of the returned value.
+    """
     dice = []
     for i in range(len(targets)):
         total_pos = targets[i].sum() + predictions[i].sum()
@@ -62,7 +128,32 @@ def crop_metric(metric_fn, predictions, targets, scale=4.0, reduction='mean'):
     """
     Compute the metric around the cropped targets' connected regions.
     
+    This works for binary images, where the loss should only be taken around
+    target's regions.
     Size of the cropped region will be bounding_box * scale.
+    
+    Parameters
+    ----------
+    metric_fn : callable
+        Loss function which takes (predictions, targets, reduction) as input,
+        and return a loss.
+    predictions : ndarray
+        Array of the predictions. Should be NxHxW.
+    targets : ndarray
+        Array of the targets. Same dimensions as predictions.
+    reduction : str (default = "mean")
+        Type of reduction to apply to the loss:
+           - "elementwise_mean", "mean", "ave", "average": average of the single
+           element's loss
+           - "sum": sum of the single element's loss
+           - None, "none", "array", "no_reduction", "full": array of each
+           element's loss
+    
+    Returns
+    -------
+    loss : float or ndarray
+        Loss of the predictions compared to targets. See reduction for 
+        details of the returned value.
     """
     metric = []
     n_no_positive = 0 # number of target with no positive pixels (fully background)
@@ -107,6 +198,16 @@ def gradient_norm(image):
     
     Defined as the Frobenius norm of the gradient image, where the gradient is 
     constructed as the norm of the gradient at each pixel.
+    
+    Parameters
+    ----------
+    image : ndarray
+        Greyscale image on which to compute the gradient norm.
+    
+    Returns
+    -------
+    grad_norm : float
+        Norm of the gradient of image.
     """
     if image.ndim != 2:
         raise ValueError("image should be 2-dimensional (image.ndim=%d)" % image.ndim)

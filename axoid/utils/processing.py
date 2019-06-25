@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Module containing useful functions for processing stacks.
+Module containing useful functions for processing stacks of images.
 Created on Mon Nov 12 09:28:07 2018
 
 @author: nicolas
@@ -19,23 +19,65 @@ from .ccreg import register_stack
 from .multithreading import run_parallel
 
 def hline(length):
-    """Horizontal line element for morpholgical operations."""
+    """
+    Horizontal line element for morpholgical operations.
+    
+    Parameters
+    ----------
+    length : int
+        Length in pixel of the line.
+    
+    Returns
+    -------
+    selem : ndarray
+        Square array of shape (length, length), with zeroes everywhere but at
+        the middle row.
+    """
     selem = np.zeros((length, length), dtype=np.uint8)
     selem[int(length / 2), :] = 1
     return selem
 
 def vline(length):
-    """Vertical line element for morpholgical operations."""
+    """
+    Vertical line element for morpholgical operations.
+    
+    Parameters
+    ----------
+    length : int
+        Length in pixel of the line.
+    
+    Returns
+    -------
+    selem : ndarray
+        Square array of shape (length, length), with zeroes everywhere but at
+        the middle column.
+    """
     selem = np.zeros((length, length), dtype=np.uint8)
     selem[:, int(length / 2)] = 1
     return selem
 
 def identity(stack, selem=None):
-    """Identity function, return the same stack."""
-    return stack
+    """Identity function, return a copy of the stack."""
+    return stack.copy()
 
 def median_filter(stack, selem=None):
-    """Apply median filtering to all images in the stack."""
+    """
+    Apply median filtering to all images in the stack.
+    
+    Parameters
+    ----------
+    stack : ndarray
+        Stack of images. If dtype is not uint8 or uint16, it will be casted
+        before computing the median, and then casted back.
+    selem : ndarray
+        Array representing the neighbourhood of pixels on which to compute the 
+        median.
+    
+    Returns
+    -------
+    filtered_stack : ndarray
+        Resulting stack after median filtering of the individual images.
+    """
     # Median works with uint8 or 16
     if stack.dtype in [np.uint8, np.uint16]:
         median_type = stack.dtype
@@ -64,8 +106,23 @@ def median_filter(stack, selem=None):
     return filtered_stack
 
 def morph_open(stack, selem=None):
-    """Apply morphological opening to all images in the stack."""   
-    filtered_stack = np.zeros(stack.shape, dtype=stack.dtype)
+    """
+    Apply morphological opening to all images in the stack.
+    
+    Parameters
+    ----------
+    stack : ndarray
+        Stack of images, should be greyscale.
+    selem : ndarray
+        Array representing the neighbourhood of pixels on which to compute the 
+        opening.
+    
+    Returns
+    -------
+    filtered_stack : ndarray
+        Resulting stack after morphological opening of the individual images.
+    """   
+    filtered_stack = np._like(stack)
     
     for i in range(len(stack)):
         filtered_stack[i] = morph.opening(stack[i], selem=selem)
@@ -73,12 +130,42 @@ def morph_open(stack, selem=None):
     return filtered_stack
 
 def preprocess_stack(stack):
-    """Apply the preprocessing function to the stack."""
+    """
+    Apply the median filtering, then morphological opening to the stack.
+    
+    /!\ Deprecated
+    Pre-processing function used in older version of the project. It is kept
+    as I am not sure if it is still used somewhere else.
+    
+    Parameters
+    ----------
+    stack : ndarray
+        Stack of images, should be greyscale.
+    
+    Returns
+    -------
+    filtered_stack : ndarray
+        Resulting stack after pre-processing of the individual images.
+    """
     filtered_stack = median_filter(stack, disk(1))
     return morph_open(filtered_stack, disk(1))
 
 def flood_fill(image, fill_val=1):
-    """Fill the contours in image using openCV's flood-fill algorithm."""
+    """
+    Fill the contours in image using openCV's flood-fill algorithm.
+    
+    Parameters
+    ----------
+    image : ndarray
+        Image with holes to fill. It will be casted to uint8 for this.
+    fill_val : int (default = 1)
+        Value to place in the holes after filling. Should be between 0 and 255.
+    
+    Returns
+    -------
+    filled_image : ndarray
+        Image as uint8 with filled holes.
+    """
     image_out = image.astype(np.uint8)
     
     # Mask used to flood fill
@@ -111,7 +198,32 @@ def _connected(label, region1, region2, connectivity):
     else:
         return False
 def fuse_small_objects(label, min_area, connectivity=1):
-    """Fuse labelled objects smaller than min_area to other connected ones."""
+    """
+    Fuse labelled objects smaller than min_area to other connected ones.
+    
+    It first fuses all small objects that are touching together, then fuse the 
+    remaining small objects to touching objects regardless of these objects'
+    size (it takes the smallest among them).
+    If small isolated objects remaind, they are not removed.
+    
+    Parameters
+    ----------
+    label : ndarray
+        Label image where 0 is background, and each label corresponds to one 
+        object.
+    min_area : int
+        Minimum area in pixel under which an object is considered small.
+    connectivity : int (default = 1)
+        Type of connectivity to consider objects touching. 1 is 4-neighbour,
+        and 2 is 8-neighbour.
+    
+    Returns
+    -------
+    label_out : ndarray
+        Label image where small objects are fused.
+        Note that the label are renumbered to start at 1, so they are not 
+        conserved from input.
+    """
     regions = measure.regionprops(label)
     small_regions = [region for region in regions if region.area < min_area]
     if len(small_regions) == 0:
@@ -149,8 +261,40 @@ def fuse_small_objects(label, min_area, connectivity=1):
 def nlm_denoising(rgb_stack, img_id=None, h_red=11, h_green=11, 
                   registration=False, reg_ref=0,
                   return_rgb=False):
-    """Apply Non-Local means denoising to the stack, or the specific image if 
-    img_id is given."""
+    """
+    Apply Non-Local means denoising to the stack, or the image.
+    
+    /!\ It takes some time (a few minutes) for full stacks.
+    
+    Parameters
+    ----------
+    rgb_stack : ndarray
+        Stack of RGB images where the first dimension is the time.
+    img_id : int (optional)
+        Index of a frame to denoise. If given, only this frame will be denoised.
+        Else, all rgb_stack will be denoised.
+    h_red : int (default = 11)
+        Parameter regulating the strength of the denoising in the red channel.
+        See OpenCV documentation for more detail.
+    h_green : int (default = 11)
+        Parameter regulating the strength of the denoising in the green channel.
+        See OpenCV documentation for more detail.
+    registration : bool (default = False)
+        If True, rgb_stack will be cross-correlation registered prior to denoising.
+        Note that the return denoised stack will not be registered.
+    reg_ref : int (default = 0)
+        If registration is used, this is the index of the frame to use as 
+        reference for the registration.
+    return_rgb : bool (default = False)
+        If True, the return stack will be RGB with the channel individually
+        denoised (note that green and blue will be identical).
+        If False, a greyscale average is returned.
+    
+    Returns
+    -------
+    denoised : ndarray
+        The denoised array. Can be RGB or greyscale depending on return_rgb.
+    """
     temporal_window_size = 5
     search_window_size = 21
     
