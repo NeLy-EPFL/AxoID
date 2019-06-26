@@ -9,10 +9,10 @@ Created on Wed Jun 19 11:48:44 2019
 @author: nicolas
 """
 
-from .multipage import AxoidWidget
+from .multipage import AxoidPage
 
 
-class CorrectionPage(AxoidWidget):
+class CorrectionPage(AxoidPage):
     """
     Page of the frame-wise correction process.
     

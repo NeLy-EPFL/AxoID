@@ -3,5 +3,5 @@ motion_compensation_path = "/home/user/talabot/motion_compensation/run_motion_co
 matlab_path = "/usr/local/MATLAB/R2019a"  # path to a MATLAB release
 #############################
 
-# Command imported by axoid.py script. Do not modify.
+# Command imported by run_axoid.py script. Do not modify.
 COMMAND = " ".join([motion_compensation_path, matlab_path])

@@ -19,14 +19,9 @@ from axoid.GUI.constants import PAGE_MODEL
 from axoid.GUI.mainwindow import AxoIDWindow
 
 def main(args):
-    """
-    Initialize and start the GUI.
+    """Initialize and start the GUI."""
+    args = parser()
     
-    Parameters
-    ----------
-    args : arguments
-        Arguments passed to the script through the command line.
-    """
     # Go to specific pages
     if args.model:
         if not os.path.isdir(os.path.join(args.experiment, "output",
@@ -54,7 +49,15 @@ def main(args):
     sys.exit(app.exec_())
 
 
-if __name__ == "__main__":
+def parser():
+    """
+    Parse the command for arguments.
+    
+    Returns
+    -------
+    args : arguments
+        Arguments passed to the script through the command line.
+    """
     parser = argparse.ArgumentParser(
             description="User correction GUI of AxoID.")
     parser.add_argument(
@@ -69,4 +72,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     
-    main(args)
+    return args
+
+
+if __name__ == "__main__":
+    main()

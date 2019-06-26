@@ -13,10 +13,12 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/NeLy-EPFL/AxoID",
     packages=["axoid"],
-    scripts=[
-        "scripts/axoid",
-        "scripts/axoid-gui",
-    ],
+    entry_points={
+        "console_scripts": [
+            "axoid=scripts/run_axoid:main",
+            "axoid-gui=scripts/run_GUI:main",
+        ]
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.6",

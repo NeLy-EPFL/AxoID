@@ -10,10 +10,10 @@ Created on Wed Jun 19 11:48:45 2019
 @author: nicolas
 """
 
-from .multipage import AxoidWidget
+from .multipage import AxoidPage
 
 
-class AnnotationPage(AxoidWidget):
+class AnnotationPage(AxoidPage):
     """
     Page of the manual annotation process.
     

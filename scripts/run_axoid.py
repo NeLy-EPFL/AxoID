@@ -601,15 +601,10 @@ def process(args, name, input_data, fluo_data=None, finetuning=True):
               (name, duration // 60, duration % 60))
 
 
-def main(args):
-    """
-    Main function of the AxoID script.
+def main():
+    """Main function of the AxoID script."""
+    args = parser()
     
-    Parameters
-    ----------
-    args : arguments
-        Arguments passed to the script through the command line.
-    """
     # Initialiaze the script
     random.seed(args.seed)
     np.random.seed(args.seed*10 + 1234)
@@ -640,7 +635,15 @@ def main(args):
         print("AxoID finished on " + time.asctime())
 
 
-if __name__ == "__main__":
+def parser():
+    """
+    Parse the command for arguments.
+    
+    Returns
+    -------
+    args : arguments
+        Arguments passed to the script through the command line.
+    """
     parser = argparse.ArgumentParser(
             description="Main script of AxoID that detects and tracks ROIs on "
             "2-photon neuroimaging data.")
@@ -710,4 +713,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(args)
+    return args
+
+
+if __name__ == "__main__":
+    main()
