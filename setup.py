@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -8,14 +8,29 @@ setup(
     version="0.1",
     author="Nicolas Talabot",
     author_email="nicolas.talabot@gmail.com",
-    description="Region of Interests detection and tracking for 2-photon data",
+    description="Regions of interest detection and tracking over 2-photon neuroimaging data",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/NeLy-EPFL/ROI_detection_and_tracking",
-    packages=find_packages(),
+    url="https://github.com/NeLy-EPFL/AxoID",
+    packages=["axoid"],
+    scripts=[
+        "scripts/axoid",
+        "scripts/axoid-gui",
+    ],
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
         "License :: OSI Approved :: MIT License",
-        "Operating System :: Ubuntu 16.04",
+#        "Operating System :: OS Independent",
+    ],
+    install_requires=[
+        "opencv=3.1.0",
+        "imgaug",
+        "numpy",
+        "PyQt5",
+        "scikit-image",
+        "scikit-learn",
+        "torch",
+        "torchvision",
     ],
 )
