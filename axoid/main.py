@@ -24,20 +24,20 @@ from skimage import filters, io, measure, morphology
 import cv2
 import torch
 
-# Add parent folder to path in order to access `axoid`
+from .detection.clustering import similar_frames, segment_projection
+from .detection.deeplearning.model import load_model
+from .detection.deeplearning.data import (compute_weights, normalize_range, 
+                                          pad_transform_stack)
+from .detection.deeplearning.finetuning import fine_tune
+from .detection.deeplearning.test import predict_stack
+from .tracking.model import InternalModel
+from .tracking.utils import renumber_ids
+from .tracking.cutting import find_cuts, apply_cuts
+from .utils.image import imread_to_float, to_npint, gray2red
+from .utils.fluorescence import get_fluorophores, compute_fluorescence, save_fluorescence
+from .utils.ccreg import register_stack
+# Add parent folder to path in order to access `motion_compensation_path`
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from axoid.detection.clustering import similar_frames, segment_projection
-from axoid.tracking.cutting import find_cuts, apply_cuts
-from axoid.detection.deeplearning.model import load_model
-from axoid.detection.deeplearning.data import (compute_weights, normalize_range, 
-                                               pad_transform_stack)
-from axoid.detection.deeplearning.finetuning import fine_tune
-from axoid.detection.deeplearning.test import predict_stack
-from axoid.tracking.model import InternalModel
-from axoid.tracking.utils import renumber_ids
-from axoid.utils.image import imread_to_float, to_npint, gray2red
-from axoid.utils.fluorescence import get_fluorophores, compute_fluorescence, save_fluorescence
-from axoid.utils.ccreg import register_stack
 # Command for optic flow warping through command line
 from motion_compensation_path import COMMAND as OFW_COMMAND
 

@@ -52,3 +52,7 @@ axoid-gui /path/to/experiment [--option VALUE]
 The main script works with data registered by Optic Flow Warping. It either looks for existing warped data, either try to call a warping script.
 
 If the user intend to use the automatic call to warping, it requires the [`motion_compensation`](https://github.com/NeLy-EPFL/motion_compensation) repository to be installed, and the paths in `motion_compensation_path.py` to be correctly set (see [Installation](./docs/Installation.md)).
+
+
+## General description
+TODO: more detailed description of AxoID
