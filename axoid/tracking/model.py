@@ -198,6 +198,9 @@ class InternalModel():
         """
         Compute the inner cost matrix for assignments.
         
+        The cost of assigning ROI i and axon j is given by how far apart they
+        are, their radial difference, and the difference in area.
+        
         Parameters
         ----------
         x_roi : ndarray
@@ -235,6 +238,10 @@ class InternalModel():
     def outer_cost(self, frame, seg):
         """
         Compute the outer cost matrix for assignments.
+        
+        The cost of assigning ROI i to axon j is given by their difference in area,
+        plus the cost of an internal assignment (how much does it cost to
+        assign the other ROIs to the other axons assuming i and j are the same).
         
         Parameters
         ----------
@@ -298,6 +305,13 @@ class InternalModel():
     def match_frame(self, frame, seg, time_idx=None):
         """
         Match axons of the given frame to the model's.
+        
+        It actually performs Hungarian assignments inside a Hungarian assignment.
+        ROI and axons are considered a good fit (low loss) if the other ROI and 
+        axons can be easily assigned when the 2 are assumed to be assigned.
+        
+        In order to deal with missing and appearing ROIs, we add "dummy" neurons
+        with fixed cost.
         
         Parameters
         ----------

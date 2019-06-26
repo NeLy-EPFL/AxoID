@@ -201,6 +201,7 @@ class ModelPage(AxoidPage):
         fn_vbox.addStretch(1)
         fn_vbox.addWidget(selection_btn)
         
+        self.right_title.setText("<b>Model correction</b>")
         self.right_control.addStretch(1)
         self.right_control.addLayout(general_vbox, stretch=1.5)
         self.right_control.addLayout(ids_vbox, stretch=1.5)

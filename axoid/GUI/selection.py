@@ -143,6 +143,7 @@ class SelectionPage(AxoidPage):
         self.annotation_btn.setToolTip("Manual annotations are not implemented yet")
         self.annotation_btn.setEnabled(False)
         
+        self.right_title.setText("<b>Output selection</b>")
         self.right_control.addWidget(QLabel("Axon identity"), alignment=Qt.AlignCenter)
         self.right_control.addLayout(hbox)
         self.right_control.addStretch(5)

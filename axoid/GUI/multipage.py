@@ -138,6 +138,8 @@ class AxoidPage(PageWidget):
         
         ## Right layout with buttons and actions
         self.right_control = QVBoxLayout()
+        self.right_title = QLabel()
+        self.right_control.addWidget(self.right_title, alignment=Qt.AlignCenter)
         
         self.top_hbox.addLayout(self.left_vbox, stretch=1)
         self.top_hbox.addLayout(self.right_control, stretch=0)
