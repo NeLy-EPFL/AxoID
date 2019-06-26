@@ -10,7 +10,7 @@ Finally, a GUI (written in PyQt5) is available for user corrections.
 Documentation is available under [docs](./docs), notably:
   * Installing AxoID: [Installation](./docs/Installation.md)
   * Explanation of the pipeline: [Pipeline](./docs/Pipeline.md)
-  * How to run the main script: [Running AxoID](./docs/Running Axoid.md)
+  * How to run the main script: [Running AxoID](./docs/Running.md)
   * User correction with the GUI: [GUI](./docs/GUI.md)
   * Description of the `axoid` package: [Package](./docs/Package.md)
   * Overview of the different scripts: [Scripts](./docs/Scripts.md)

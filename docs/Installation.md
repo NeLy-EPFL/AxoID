@@ -16,7 +16,7 @@ Then, you have to enter this environment (you will have to enter it each time yo
 ```
 source activate axoid
 ```
-or the name you have given it (In order to quit the environment, you can use `conda deactivate`). The command line should have a `(axoid)` at the beginning to show that you are in it.
+or the name you have given it (in order to quit the environment, you can use `conda deactivate`). The command line should have `(axoid)` at the beginning when you are in the environment.
 
 If you intend to let *AxoID* call the optic flow warping, you will need the [`motion_compensation`](https://github.com/NeLy-EPFL/motion_compensation) repository.  
 Follow the instructions to install it. Once it is installed and working, you will need to edit the paths in `motion_compensation_path.py` to the motion_compensation script, and MATLAB release.  
@@ -44,4 +44,4 @@ axoid-gui /path/to/experiment [--option VALUE]
 ```
 to run the user correction GUI on the experiment, after it was processed by *AxoID*.
 
-For more information, see [Running AxoID](./Running AxoId.md)
+For more information, see [Running AxoID](./Running.md)
