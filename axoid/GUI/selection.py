@@ -28,10 +28,21 @@ from axoid.utils.image import to_id_cmap
 
 
 class SelectionPage(AxoidPage):
-    """Page of the output selection process."""
+    """
+    Page of the output selection process.
+    
+    Here, the user select which output amongst raw data, cross-correlation 
+    registered data, and optic flow warped data. He can explore the outputs of
+    the three results before making a choice. If an output was already selected,
+    he can also choose to continue with it instead of starting again.
+    """
     
     def __init__(self, *args, **kwargs):
-        """Initialize the selection page."""
+        """
+        Initialize the selection page.
+        
+        Args and kwargs are passed to the AxoidPage constructor.
+        """
         super().__init__(*args, **kwargs)
     
     def initUI(self):
@@ -126,7 +137,7 @@ class SelectionPage(AxoidPage):
         self.select_combo.activated[str].connect(self.selectOutput)
         self.select_btn = QPushButton("Select output")
         self.select_btn.setToolTip("Select chosen output as final output")
-        self.select_btn.clicked[bool].connect(self.saveFinalOutput)
+        self.select_btn.clicked.connect(self.saveFinalOutput)
         self.select_btn.setEnabled(False)
         self.annotation_btn = QPushButton("Manual annotation")
         self.annotation_btn.setToolTip("Manual annotations are not implemented yet")
@@ -141,7 +152,14 @@ class SelectionPage(AxoidPage):
         self.right_control.addStretch(1)
     
     def changeFrame(self, num):
-        """Change the displayed frames to the given num."""
+        """
+        Change the stack frames to display.
+        
+        Parameters
+        ----------
+        num : int
+            Index of the frame in the stacks to display.
+        """
         super().changeFrame(num)
         for folder in ["raw", "ccreg", "warped"]:
             self.roi_autos[folder].changeFrame(int(num))
@@ -149,7 +167,15 @@ class SelectionPage(AxoidPage):
                 self.choice_widgets[folder].changeFrame(int(num))
     
     def changeChoice(self, choice):
-        """Change the last display based on the ComboBox choice."""
+        """
+        Change the choice display based on the ComboBox choice.
+        
+        Parameters
+        ----------
+        choice : str
+            String corresponding to the user choice. See constants.py for a list
+            of possible strings, and their corresponding files.
+        """
         for folder in ["raw", "ccreg", "warped"]:
             self.choice_layouts[folder].removeWidget(self.choice_widgets[folder])
             self.choice_widgets[folder].close()
@@ -178,7 +204,14 @@ class SelectionPage(AxoidPage):
                                                   alignment=Qt.AlignCenter)
     
     def selectOutput(self, selection):
-        """Enable or disable buttons based on output selection."""
+        """
+        Enable or disable buttons based on output selection.
+        
+        Parameters
+        ----------
+        selection : str
+            Name of the output selection in the QComboBox.
+        """
         if selection == "Choose output":
             self.select_btn.setEnabled(False)
             self.annotation_btn.setEnabled(False)
@@ -189,7 +222,7 @@ class SelectionPage(AxoidPage):
             self.select_btn.setEnabled(True)
             self.annotation_btn.setEnabled(False)  # not available as long as annotation is not implemented
     
-    def saveFinalOutput(self, state):
+    def saveFinalOutput(self):
         """Save the selected output as the final output."""
         selection = self.select_combo.currentText()
         if selection != "final":

@@ -21,10 +21,38 @@ from .constants import PAGE_SELECTION, PAGE_MODEL, PAGE_CORRECTION, PAGE_ANNOTAT
 
 
 class AxoIDWindow(MultiPageWidget):
-    """Main window for the AxoID GUI."""
+    """
+    Main window for the AxoID GUI.
+    
+    It allows navigation through multiple pages:
+        1. Output selection: the user select which output amongst raw, ccreg,
+           and warped he wants to use.
+        2. Model correction: the user can modify the tracker model to discard,
+           fuse ROIs, or apply "cuts" to separate touching axons. Then he can apply
+           theses changes to the whole experiment automatically.
+        3. Frame correction: the user can modify single frames, where the 
+           binary detection or the tracking is erroneous.
+        4. Manual annotation: (not implemented) the user can choose to discard
+           all the outputs, and manually annotated frames to fine tune the 
+           detector network, and then apply the rest of the pipeline.
+    """
     
     def __init__(self, experiment, *args, goto=None, **kwargs):
-        """Initialize the window."""
+        """
+        Initialize the window and its pages.
+        
+        Parameters
+        ----------
+        experiment : str
+            Path to the experiment folder (excluding 2Pimg/ or output/).
+        args : list of arguments
+            List of arguments to pass to MultiPageWidget initialization.
+        goto : int (optional)
+            Page identifier (see constants.py). If set, the GUI will be started
+            on this page instead of the output selection one.
+        kwargs : dict of named arguments
+            Dictionary of named arguments to pass to MultiPageWidget initialization.
+        """
         super().__init__(*args, **kwargs)
         
         self.experiment = experiment

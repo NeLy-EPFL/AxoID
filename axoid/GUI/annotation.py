@@ -10,14 +10,25 @@ Created on Wed Jun 19 11:48:45 2019
 @author: nicolas
 """
 
-from .multipage import PageWidget
+from .multipage import AxoidWidget
 
 
-class AnnotationPage(PageWidget):
-    """Page of the manual annotation process."""
+class AnnotationPage(AxoidWidget):
+    """
+    Page of the manual annotation process.
     
-    def __init__(self, experiment, *args, **kwargs):
-        """Initialize the annotation page."""
-        super().__init__(*args, **kwargs)
+    Here, the user creates manual annotations for some selected frames 
+    to then fine tune the network on. The process can be repeated as will.
+    Finally, the rest of the AxoID pipeline will be applied to the data.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize the annotation page.
         
-        self.experiment = experiment
+        Args and kwargs are passed to the AxoidPage constructor.
+        """
+        super().__init__(*args, **kwargs)
+    
+    def initUI(self):
+        """Initialize the interface."""

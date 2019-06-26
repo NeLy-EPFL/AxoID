@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Base PyQt classes for multi-page widgets with change through signal emission.
-Page's identifiers are considered to be integers.
+Page's identifiers are integers defined in constants.py.
 Created on Wed Jun 19 11:13:27 2019
 
 @author: nicolas
@@ -19,51 +19,74 @@ from PyQt5.QtWidgets import (QWidget, QStackedWidget, QHBoxLayout, QVBoxLayout,
 
 
 class PageWidget(QWidget):
-    """PyQt widget corresponding to a single page for multi-page widgets."""
+    """PyQt widget corresponding to a single page for multi-pages widgets."""
+    # Define signals
     changedPage = pyqtSignal(int)
     quitApp = pyqtSignal()
     
     def initUI(self):
         """Function to be implemented in child classes to create the UI."""
-    
-#    def emitChangedPage(self, page):
-#        """Return a function to emit a changedPage signal to the given page."""
-#        def emit(state):
-#            self.changedPage.emit(page)
-#        return emit
+
 
 class MultiPageWidget(QWidget):
-    """Base PyQt widget for multi-pages."""
+    """Base PyQt widget for multi-pages, working with multiple PageWidget."""
     
     def __init__(self, *args, **kwargs):
-        """Initialize the widget."""
+        """
+        Initialize the widget.
+        
+        All parameters are given to the QWidget constructor.
+        """
         super().__init__(*args, **kwargs)
         
         # Initialize widget stack
         self.stackedWidget = QStackedWidget(self)
-        self.pageWidgets = {}
+        
+        # Pages are also stored in a dictionary where keys are their page ID
+        self.pageWidgets = dict()
     
     def addPage(self, pageWidget, pageID, *args, **kwargs):
-        """Add the page."""
+        """
+        Add the page to this widget.
+        
+        Parameters
+        ----------
+        pageWidget : PageWidget
+            A page widget to add to this mutli-page. Signals are automatically
+            connected to correct slots.
+        pageID : int
+            Page identifier for the new pageWidget. It should be different 
+            from all already in use.
+        args & kwargs : list and dict of arguments and named arguments
+            Arguments given to the PageWidget constructor.
+        """
+        if pageID in self.pageWidgets.keys():
+            raise ValueError("%d is already an existing page ID" % pageID)
         pageWidget.changedPage.connect(self.changePage)
         pageWidget.quitApp.connect(self.close)
         self.stackedWidget.addWidget(pageWidget, *args, **kwargs)
         self.pageWidgets.update({pageID: pageWidget})
     
-    def removePage(self, pageID, *args, **kwargs):
-        """Remove the page."""
+    def removePage(self, pageID):
+        """Remove the page corresponding to pageID."""
         self.stackedWidget.removeWidget(self.pageWidgets[pageID])
         self.pageWidgets.pop(pageID)
     
     def changePage(self, pageID):
-        """Change the current page."""
+        """Change the current page to the one corresponding to pageID."""
         self.stackedWidget.currentWidget().reset()
         self.stackedWidget.setCurrentWidget(self.pageWidgets[pageID])
         self.pageWidgets[pageID].initUI()
 
 
 class AxoidPage(PageWidget):
-    """Page with base layouts for AxoID GUI."""
+    """
+    PageWidget with base layouts for AxoID GUI.
+    
+    It consists of a left grid display with the images ontop and a slider to
+    select the current frame to display, and a right panel with the different 
+    buttons and controls that the user has access to.
+    """
     
     def __init__(self, experiment, *args, **kwargs):
         """Initialize the selection page."""

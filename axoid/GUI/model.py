@@ -15,13 +15,11 @@ import pickle
 import shutil
 
 import numpy as np
-import matplotlib.pyplot as plt
 from skimage import io
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import (QLabel, QHBoxLayout, QVBoxLayout, QComboBox, QGroupBox,
-                             QGridLayout, QPushButton, QRadioButton, QButtonGroup,
-                             QAbstractButton, QMessageBox, QProgressDialog)
+from PyQt5.QtWidgets import (QLabel, QHBoxLayout, QVBoxLayout, QComboBox, 
+                             QGroupBox, QPushButton, QButtonGroup, QMessageBox, 
+                             QProgressDialog)
 import cv2
 
 from .constants import PAGE_SELECTION, PAGE_CORRECTION, CHOICE_PATHS, ID_CMAP, BIN_S, RATE_HZ
@@ -41,10 +39,19 @@ CUTDRAWING = 3
 
 
 class ModelPage(AxoidPage):
-    """Page of the model correction process."""
+    """
+    Page of the model correction process.
+    
+    Here, the user can modify the model of the tracker to improve the 
+    axon's identities (e.g.: by fusing, cutting, or discarding ROIs).
+    """
     
     def __init__(self, *args, **kwargs):
-        """Initialize the model page."""
+        """
+        Initialize the model page.
+        
+        Args and kwargs are passed to the AxoidPage constructor.
+        """
         super().__init__(*args, **kwargs)
     
     def initUI(self):
@@ -201,7 +208,14 @@ class ModelPage(AxoidPage):
         self.right_control.addLayout(fn_vbox, stretch=2)
     
     def changeFrame(self, num):
-        """Change the displayed frames to the given num."""
+        """
+        Change the stack frames to display.
+        
+        Parameters
+        ----------
+        num : int
+            Index of the frame in the stacks to display.
+        """
         super().changeFrame(num)
         self.identities.changeFrame(int(num))
         self.identities_new.changeFrame(int(num))
@@ -210,7 +224,15 @@ class ModelPage(AxoidPage):
                 self.choice_widgets[folder].changeFrame(int(num))
     
     def changeChoice(self, choice):
-        """Change the last display based on the ComboBox choice."""
+        """
+        Change the choice display based on the ComboBox choice.
+        
+        Parameters
+        ----------
+        choice : str
+            String corresponding to the user choice. See constants.py for a list
+            of possible strings, and their corresponding files.
+        """
         for folder in ["final", "gui"]:
             self.choice_layouts[folder].removeWidget(self.choice_widgets[folder])
             self.choice_widgets[folder].close()
@@ -237,7 +259,7 @@ class ModelPage(AxoidPage):
                                                   alignment=Qt.AlignCenter)
     
     def resetModel(self):
-        """Reset the currently modified model to the model in folder."""
+        """Reset the currently modified model to the model in final/ folder."""
         path = os.path.join(self.experiment, "output", "axoid_internal",
                             "final", "model.tif")
         model = io.imread(path)
@@ -267,7 +289,13 @@ class ModelPage(AxoidPage):
         self.model_new.applyCut()
     
     def _get_progress_dialog(self, text, vmin=0, vmax=100):
-        """Return a QProgressDialog and start to display it."""
+        """
+        Return a QProgressDialog and start to display it.
+        
+        It only shows the text with the progress bar, and there are no cancel
+        button. It starts from vmin, and disappears after reaching vmax.
+        To update its value, use progress.setValue(val)
+        """
         progress = QProgressDialog(text, "", vmin, vmax)
         progress.setWindowModality(Qt.ApplicationModal)
         progress.setCancelButton(None)
@@ -306,16 +334,7 @@ class ModelPage(AxoidPage):
                             "gui", "identities.tif")
         identities = io.imread(path)
         for i in range(len(identities)):
-            for change in self.model_new.changes:
-                roi_img = identities[i] == change[0]
-                if np.sum(roi_img) == 0:
-                    continue
-                if len(change) == 2:  # new id
-                    identities[i][roi_img] = change[1]
-                elif len(change) == 3:  # cut
-                    n, d = change[1]
-                    coords = get_cut_pixels(n, d, roi_img)
-                    identities[i][coords[:,0], coords[:,1]] = change[2]
+            identities[i] = self.model_new.applyChanges(identities[i])
         progress.setValue(30)
         # Renumber ids
         new_identities = identities.copy()
@@ -426,8 +445,8 @@ class ModelPage(AxoidPage):
         progress.setValue(100)
     
     def _unsaved_changes(self):
-        """Verify if there are unsaved changes, and ask user to continue if so."""
-        if self.current_has_changed:
+        """Verify if there are unsaved changes, and ask the user to continue if so."""
+        if self.current_has_changed or len(self.model_new.models) > 1:
             msg_box = QMessageBox()
             msg_box.setText("There are unsaved changes, are you sure you want to continue ?")
             msg_box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Ok)
@@ -441,13 +460,12 @@ class ModelPage(AxoidPage):
             return False
     
     def finish(self):
-        """Finish the model correction and AxoID GUI."""
+        """Finish the model correction and the AxoID GUI."""
         if not self._unsaved_changes():
             self.quitApp.emit()
     
     def gotoFrameCorrection(self):
         """Finish the model correction, and go to the frame correction page."""
-        # End of model correction, go to frame correction page
         if not self._unsaved_changes():
             self.changedPage.emit(PAGE_CORRECTION)
     
@@ -461,13 +479,26 @@ class ModelImage(LabelImage):
     """Editable model image through OpenCV, and displayed in PyQt5."""
     
     def __init__(self, image, *args, **kwargs):
-        """Initialize the label with the image."""
+        """
+        Initialize the label with the image.
+        
+        Parameters
+        ----------
+        image : ndarray
+            The image as a numpy array.
+        args : list of arguments
+            List of arguments that will be passed to the LabelImage constructor.
+        kwargs : dict of named arguments
+            Dictionary of named arguments that will be passed to the LabelImage 
+            constructor.
+        """
+        # List of modified models, useful for the 'undo' action
         self.models = [image]
         self.mode = IDLE
         self.drawing = False
         self.cut_points = None
         self.cv2_overlay = np.zeros_like(self.models[-1])
-        # Following are for transfering changes to entire experiment
+        # Following are for transfering changes to the entire experiment
         #  - for fuse/discard: tuple of size 2 with old and new id
         #  - for cuts: tuple of size 3 with axon_id to be cut, tuple of cut's parameter,
         #    and the new id
@@ -479,7 +510,14 @@ class ModelImage(LabelImage):
         super().__init__(rgb_image, *args, **kwargs)
     
     def update_(self, new_model=None):
-        """Update models and pixmap."""
+        """
+        Update models and displayed QPixmap.
+        
+        Parameters
+        ----------
+        new_model : ndarray (optional)
+            Model image to append to the list of models.
+        """
         if new_model is not None:
             self.models.append(new_model)
             self.cv2_overlay = np.zeros_like(self.cv2_overlay)
@@ -489,7 +527,14 @@ class ModelImage(LabelImage):
         super().update_()
     
     def reset(self, image):
-        """Reset the model image correction."""
+        """
+        Reset the model image correction.
+        
+        Parameters
+        ----------
+        image : ndarray
+            Model image with which the model will be replaced.
+        """
         self.models = [image]
         self.drawing = False
         self.cut_points = None
@@ -501,7 +546,7 @@ class ModelImage(LabelImage):
         self.update_()
     
     def undo_last(self):
-        """Undo the last change by removing the last model."""
+        """Undo the last change by removing the last model and its changes."""
         self.cut_points = None
         self.cv2_overlay = np.zeros_like(self.cv2_overlay)
         if len(self.models) > 1:
@@ -528,7 +573,14 @@ class ModelImage(LabelImage):
             self._changes_num.append(1)
     
     def change_mode(self, mode):
-        """Change the current drawing mode."""
+        """
+        Change the current drawing mode.
+        
+        Parameters
+        ----------
+        mode : int
+            Drawing mode, see constants defined at the top of this file.
+        """
         self.cv2_overlay = np.zeros_like(self.cv2_overlay)
         self.cut_points = None
         self.mode = mode
@@ -604,3 +656,30 @@ class ModelImage(LabelImage):
                 self.cut_points = ((self.x, self.y), (x, y))
         self.drawing = False
         self.update_()
+    
+    def applyChanges(self, id_frame):
+        """
+        Apply the saved changes to the given identity frame.
+        
+        Parameters
+        ----------
+        id_frame : ndarray
+            Identity image on which to apply the changes performed on the model.
+        
+        Returns
+        -------
+        out_frame : ndarray
+            New identity image with the applied changes.
+        """
+        out_frame = id_frame.copy()
+        for change in self.changes:
+            roi_img = out_frame == change[0]
+            if np.sum(roi_img) == 0:
+                continue
+            if len(change) == 2:  # new id
+                out_frame[roi_img] = change[1]
+            elif len(change) == 3:  # cut
+                n, d = change[1]
+                coords = get_cut_pixels(n, d, roi_img)
+                out_frame[coords[:,0], coords[:,1]] = change[2]
+        return out_frame
