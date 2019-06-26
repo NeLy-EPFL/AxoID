@@ -7,6 +7,8 @@ The main pipeline consists in detection, tracking, and fluorescence extraction:
 **Note:** In order to improve the results, this pipeline is actually applied 3 times: once over the raw data, once over the cross-correlation registered data, and once over the warped data.  
 Therefore, it outputs 3 different results. The user can use the GUI to more easily choose which one he wants to use.
 
+![AxoID pipeline](../images/pipeline.png)
+
 ### Detection
 The deep network take a frame as input, and outputs a binary image with the ROIs segmented over the background.
 It is applied to the entire experiment to get a stack of segmentations. Then, ROIs with size below MIN_AREA (e.g. 11 pixels) are discarded.
