@@ -29,7 +29,7 @@ setup(
         "opencv-python==3.1.0.5",
         "imgaug",
         "numpy",
-        "PyQt5",
+        "PyQt5==5.9.2",
         "scikit-image",
         "scikit-learn",
         "torch",
