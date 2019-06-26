@@ -2,7 +2,8 @@
 *.tif
 *.png
 
-# Temporary/test files
+# Distribution and packaging
+*.egg-info/
 
 # Caches and checkpoints
 **/__pycache__
@@ -15,3 +16,4 @@ data/models
 
 # Results
 data/outputs
+data/models
