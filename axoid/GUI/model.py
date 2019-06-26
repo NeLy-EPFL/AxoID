@@ -17,9 +17,9 @@ import shutil
 import numpy as np
 from skimage import io
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (QLabel, QHBoxLayout, QVBoxLayout, QComboBox, 
-                             QGroupBox, QPushButton, QButtonGroup, QMessageBox, 
-                             QProgressDialog)
+from PyQt5.QtWidgets import (QButtonGroup, QComboBox, QGroupBox, QHBoxLayout, 
+                             QLabel, QMessageBox, QProgressDialog, QPushButton,
+                             QVBoxLayout)
 import cv2
 
 from .constants import PAGE_SELECTION, PAGE_CORRECTION, CHOICE_PATHS, ID_CMAP, BIN_S, RATE_HZ

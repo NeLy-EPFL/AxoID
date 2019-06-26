@@ -15,8 +15,8 @@ setup(
     packages=["axoid"],
     entry_points={
         "console_scripts": [
-            "axoid=scripts/run_axoid:main",
-            "axoid-gui=scripts/run_GUI:main",
+            "axoid=axoid.main:main",
+            "axoid-gui=axoid.GUI.main:main",
         ]
     },
     classifiers=[

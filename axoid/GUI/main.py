@@ -8,9 +8,11 @@ Created on Tue Jun 18 17:16:11 2019
 """
 
 import os.path
+import sys
 import shutil
+import argparse
 
-from PyQt5.QtWidgets import QHBoxLayout
+from PyQt5.QtWidgets import QApplication, QHBoxLayout
 
 from .multipage import MultiPageWidget
 from .selection import SelectionPage
@@ -91,3 +93,61 @@ class AxoIDWindow(MultiPageWidget):
             gui_path = os.path.join(self.experiment, "output", folder, "gui")
             if os.path.isdir(gui_path):
                 shutil.rmtree(gui_path)
+
+
+def main(args=None):
+    """Initialize and start the GUI."""
+    if args is None:
+        args = parser()
+    
+    # Go to specific pages
+    if args.model:
+        if not os.path.isdir(os.path.join(args.experiment, "output",
+                                          "axoid_internal", "final")):
+            raise RuntimeError("cannot start on model correction page without final outputs")
+        goto = PAGE_MODEL
+    else:
+        goto = None
+    
+    app = QApplication([])
+    
+    window = AxoIDWindow(args.experiment, goto=goto)
+    
+    # Set the window to 0.9 * screen dimension while preserving its ratio
+    screen = app.primaryScreen()
+    size = screen.size()
+    width, height = size.width(), size.height()
+    app_width = width * 0.9
+    app_height = height * 0.9
+    app_width = min(app_width, window.wh_ratio * app_height)
+    app_height = min(app_height, window.wh_ratio * app_width)
+    window.resize(app_width, app_height)
+    window.show()
+    
+    sys.exit(app.exec_())
+
+
+def parser():
+    """
+    Parse the command for arguments.
+    
+    Returns
+    -------
+    args : arguments
+        Arguments passed to the script through the command line.
+    """
+    parser = argparse.ArgumentParser(
+            description="User correction GUI of AxoID.")
+    parser.add_argument(
+            'experiment',
+            type=str,
+            help="path to the experiment folder (excluding \"2Pimg/\")"
+    )
+    parser.add_argument(
+            '--model',
+            action="store_true",
+            help="start the GUI on the model correction page"
+    )
+    args = parser.parse_args()
+    
+    return args

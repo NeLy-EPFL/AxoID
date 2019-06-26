@@ -30,6 +30,5 @@ CHOICE_PATHS = {"input": os.path.join("output", "axoid_internal", "%s", "input.t
 # Colormap to use for displaying model and identities images
 ID_CMAP = "viridis"
 
-# Fluorescence extraction (Should be the same as in run_axoid.py)
-BIN_S = 10.0           # bin length for baseline computation (s)
-RATE_HZ = 2.418032787  # acquisition rate of 2-photon data (Hz)
+# Fluorescence extraction
+from axoid.main import BIN_S, RATE_HZ
