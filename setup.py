@@ -24,7 +24,7 @@ setup(
 #        "Operating System :: OS Independent",
     ],
     install_requires=[
-        "opencv=3.1.0",
+        "opencv==3.1.0",
         "imgaug",
         "numpy",
         "PyQt5",
