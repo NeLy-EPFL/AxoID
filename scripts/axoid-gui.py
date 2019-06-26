@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import QApplication
 # Add parent folder to path in order to access `axoid`
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from axoid.GUI.constants import PAGE_MODEL
-from axoid.GUI.main import AxoIDWindow
+from axoid.GUI.mainwindow import AxoIDWindow
 
 def main(args):
     """
