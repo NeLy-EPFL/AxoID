@@ -1,11 +1,25 @@
 ## `axoid` package
+
+### Main components
+`axoid` is divided in four parts:
+  * `GUI/`: contains all the code for the user correction GUI
+  * `detection/`: code related to the ROI detection as binary segmentation (with deeplearning and finetuning)
+  * `tracking/`: code related to the ROI identity tracking
+  * `utils/`: general util functions
+
+### Main scripts
+*AxoID* main scripts is directly under `axoid/`: `axoid.main`, whereas the main script for the GUI is under `axoid/GUI/`: `axoid.GUI.main`.
+
+These are the function called by the installed `axoid` and `axoid-gui`commands.  
+The scripts `run_axoid.py` and `run_GUI.py` under `scripts/` simply call these functions.
+
 ### File structure
 ```
 axoid/
 ├── GUI/						user correction gui
-│   ├── annotation.py			page for manual annotation *(not implemented)*
+│   ├── annotation.py			page for manual annotation (not implemented)
 │   ├── constants.py			constants and common parameters for the whole GUI
-│   ├── correction.py			page for frame-wise correction *(can only change identity of ROIs)*
+│   ├── correction.py			page for frame-wise correction (can only change identity of ROIs)
 │   ├── image.py				image widgets for easy image and stack display in PyQt5
 │   ├── main.py					main window and function for the gui
 │   ├── model.py				page for model correction
@@ -30,10 +44,11 @@ axoid/
 │   │   ├── generation.py		functions to generate synthetic experiments
 │   │   ├── stats_181121.pkl	histograms representing the pixel intensity of real data
 │   │   └── stats_190221.pkl	same as above, updated version (see README.md for more details)
+│   │
 │   └── clustering.py			find cluster of similar frames for automatic finetuning
 │
 ├── tracking/					ROI identity tracking through frames
-│   ├── **pycpd/**				coherent point drift python implementation
+│   ├── pycpd/					coherent point drift python implementation
 │   │							(see [Coherent Point Drift](./CPD.md), and pycpd/README.md)
 │   ├── cutting.py				functions for "cutting" ROIs in two sub-ROIs
 │   ├── model.py				internal model tracker using custom cost functions
