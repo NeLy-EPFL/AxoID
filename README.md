@@ -49,6 +49,7 @@ or, if *AxoID* has been installed following [Installation](./docs/Installation.m
 ```
 axoid-gui /path/to/experiment [--option VALUE]
 ```
+**Note:** if you run the GUI through `ssh`, you might need the option `-X` or `-Y` to forward the window to your screen. Additionally, note that it might be slower than running the GUI from your own machine.
 
 ### Optic flow warping
 The main script works with data registered by Optic Flow Warping. It either looks for existing warped data, either tries to call a warping script.

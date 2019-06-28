@@ -18,11 +18,7 @@ source activate axoid
 ```
 or the name you have given it (in order to quit the environment, you can use `conda deactivate`). The command line should have `(axoid)` at the beginning when you are in the environment.
 
-If you intend to let *AxoID* call the optic flow warping, you will need the [`motion_compensation`](https://github.com/NeLy-EPFL/motion_compensation) repository.  
-Follow the instructions to install it. Once it is installed and working, you will need to edit the paths in `motion_compensation_path.py` to the motion_compensation script, and MATLAB release.  
-Without this, *AxoID* will not be able to warp the data, and it is the user's responsability to do so beforehand.
-
-If you intend to use the Jupyter Notebooks, you need to install it:
+If you intend to use the Jupyter Notebooks, you need to install `jupyter`:
 ```
 conda install jupyter
 ```
@@ -31,6 +27,10 @@ Finally, you can install the `axoid` package and its dependencies with (be sure 
 ```
 pip install -e .
 ```
+
+**Optic flow warping**: If you intend to let *AxoID* call the optic flow warping, you will need the [`motion_compensation`](https://github.com/NeLy-EPFL/motion_compensation) repository. Follow the instructions there to install it.  
+Once it is installed and working, you will need to edit the paths in `motion_compensation_path.py` to the motion_compensation script, and MATLAB release.  
+Without this, *AxoID* will not be able to warp the data, and it is the user's responsability to do so beforehand.
 
 ### Installed commands
 Inside the new conda environment just created, the `axoid` package should have been installed and therefore can be imported in Python (using `import axoid`).  

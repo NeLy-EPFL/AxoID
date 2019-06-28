@@ -13,6 +13,8 @@ Therefore, it outputs 3 different results. The user can use the GUI to more easi
 The deep network takes a frame as input, and outputs a binary image with the ROIs segmented over the background.
 It is applied to the entire experiment to get a stack of segmentations. Then, ROIs with size below a minimum (e.g. 11 pixels) are discarded.
 
+![](../images/detection.png "Deep network detection")
+
 #### Fine tuning 
 Optionally, the network can be fine tuned on a few frames of the experiment to try and improve its performance on this single experiment only. In order to do this automatically, it needs a few frames with generated ground truths.
 
@@ -23,6 +25,8 @@ In order to create ground truths, it take the average of these frames (with poss
 
 ### Tracking
 The tracker works by creating an "internal model" -a model of how the axons should be on the frame- and then matching each frame to this model. This matching tries to link the ROIs of the frame to the axon of the model.  
+
+![](../images/tracking.png "Internal model tracking")
 
 #### Initialization
 The model is first initialized with a single frame. In order to do this, there is 2 options:

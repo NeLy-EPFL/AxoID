@@ -11,6 +11,7 @@ Similarly, the user correction GUI can be launched using:
 ```
 axoid-gui /path/to/experiment [--option VALUE]
 ```
+**Note:** if you run the GUI through `ssh`, you might need the option `-X` or `-Y` to forward the window to your screen. Additionally, note that it might be slower than running the GUI from your own machine.
 
 Both scripts accept the argument `--help` for a list of their optional arguments.
 
