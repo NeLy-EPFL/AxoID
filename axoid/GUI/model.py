@@ -196,10 +196,10 @@ class ModelPage(AxoidPage):
         selection_btn.clicked.connect(self.gobackSelection)
         
         fn_vbox.addLayout(hbox)
-        fn_vbox.addWidget(finish_btn)
         fn_vbox.addWidget(correction_btn)
-        fn_vbox.addStretch(1)
         fn_vbox.addWidget(selection_btn)
+        fn_vbox.addStretch(1)
+        fn_vbox.addWidget(finish_btn)
         
         self.right_title.setText("<b>Model correction</b>")
         self.right_control.addStretch(1)
