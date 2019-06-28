@@ -57,5 +57,12 @@ The main script works with data registered by Optic Flow Warping. It either look
 If the user intend to use the automatic call to warping, it requires the [`motion_compensation`](https://github.com/NeLy-EPFL/motion_compensation) repository to be installed, and the paths in `motion_compensation_path.py` to be correctly set (see [Installation](./docs/Installation.md)).
 
 
+## Features
+TODO: list and explain different features axoid package offer
+  * Train and optimize network
+  * Create synthetic data (mostly used for training)
+  * Internal model tracking (framework of building a model, then matching frames)
+  * Gui for correction and improvement
+
 ## General description
-TODO: more detailed description of AxoID
+TODO: more detailed description of AxoID, here put lots of details for next person working on it

@@ -54,6 +54,6 @@ To then cut the ROI on all frames of the experiment, an ellipse is fitted to it 
 
 ### Fluorescence extraction
 The fluorophore time series are computed by taking the average of non-zero pixels in the ROI over time.  
-dF/F and dR/R are then computed by first finding the baselines F0 and R0.
+ΔF/F and ΔR/R are then computed by first finding the baselines F0 and R0.
 
 If an ROI is absent on a frame, its fluorscence will be reported as NaN (Not a Number).
