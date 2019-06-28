@@ -23,7 +23,7 @@ CHOICE_PATHS = {"input": os.path.join("output", "axoid_internal", "%s", "input.t
                 "seg_init": os.path.join("output", "axoid_internal", "%s", "seg_init.tif"),
                 "model": os.path.join("output", "axoid_internal", "%s", "model.tif"),
                 "identities": os.path.join("output", "axoid_internal", "%s", "identities.tif"),
-                "ROI_auto": os.path.join("output", "ROI_auto", "%s", "RGB_seg.tif"),
+                "ROI": os.path.join("output", "ROI_auto", "%s", "RGB_seg.tif"),
                 "ΔR/R": os.path.join("output", "GC6_auto", "%s", "ROIs_dRR.png"),
                 "ΔF/F": os.path.join("output", "GC6_auto", "%s", "ROIs_dFF.png")}
 

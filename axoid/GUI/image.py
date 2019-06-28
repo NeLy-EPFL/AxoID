@@ -83,7 +83,7 @@ class LabelImage(QLabel):
         self.setPixmap(scaledPix)
     
     def update_(self):
-        """Rescaled the QPixmap and call QLabel update()."""
+        """Rescale the QPixmap and call QLabel update()."""
         scaledPix = self.pixmap_.scaled(self.size(), self.scaling_mode)
         self.setPixmap(scaledPix)
         self.update()
@@ -121,7 +121,7 @@ class LabelStack(LabelImage):
         elif isinstance(stack, np.ndarray):
             self.stack = stack
         
-        super().__init__(stack[0], *args, **kwargs)
+        super().__init__(self.stack[0], *args, **kwargs)
     
     def changeFrame(self, num):
         """

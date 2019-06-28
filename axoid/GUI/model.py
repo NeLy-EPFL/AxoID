@@ -91,7 +91,7 @@ class ModelPage(AxoidPage):
         for col in [1, 2, 3]:
             self.left_display.setColumnStretch(col, 1)
         
-         # Row and column labels
+        # Row and column labels
         labels = ["Model", "Identities", "In folder", "Current"]
         positions = [(0,1), (0,2), (1,0), (2,0)]
         alignments = [Qt.AlignCenter] * 2 + [Qt.AlignVCenter | Qt.AlignLeft] * 2
@@ -111,7 +111,7 @@ class ModelPage(AxoidPage):
         self.combo_choice = QComboBox()
         self.combo_choice.setFocusPolicy(Qt.ClickFocus)
         self.combo_choice.addItems(["input", "segmentation", "rgb_init",
-                                   "seg_init", "ROI_auto", "ΔR/R", "ΔF/F"])
+                                   "seg_init", "ROI", "ΔR/R", "ΔF/F"])
         self.combo_choice.setCurrentText("rgb_init")
         self.changeChoice(self.combo_choice.currentText())
         self.combo_choice.activated[str].connect(self.changeChoice)
@@ -392,7 +392,6 @@ class ModelPage(AxoidPage):
             fluo_data = imread_to_float(fluo_path)
             tdtom, gcamp = get_fluorophores(fluo_data, new_identities)
         else:
-            io.imsave("/home/nicolas/Desktop/input_data.tif", input_data)
             input_data = input_data.astype(np.float32) / input_data.max()
             tdtom, gcamp = get_fluorophores(input_data, new_identities)
         progress.setValue(70)

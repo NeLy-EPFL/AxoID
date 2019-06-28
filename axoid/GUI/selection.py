@@ -58,7 +58,7 @@ class SelectionPage(AxoidPage):
         
         # Initialize images and stacks
         self.models = dict()
-        self.roi_autos = dict()
+        self.rois = dict()
         self.choice_layouts = dict()
         self.choice_widgets = dict()
         for folder in ["raw", "ccreg", "warped"]:
@@ -72,7 +72,7 @@ class SelectionPage(AxoidPage):
                                     folder, "RGB_seg.tif")
             roi_img = io.imread(roi_path)
             roi_lbl = LabelStack(roi_img)
-            self.roi_autos.update({folder: roi_lbl})
+            self.rois.update({folder: roi_lbl})
             
             self.choice_layouts.update({folder: QHBoxLayout()})
             self.choice_widgets.update({folder: QLabel()})
@@ -95,7 +95,7 @@ class SelectionPage(AxoidPage):
             self.left_display.setColumnStretch(col, 1)
             
         # Row and column labels
-        labels = ["Raw", "CCReg", "Warped", "Model", "ROI_auto"]
+        labels = ["Raw", "CCReg", "Warped", "Model", "ROIs"]
         positions = [(0,1), (0,2), (0,3), (1,0), (2,0)]
         alignments = [Qt.AlignCenter] * 3 + [Qt.AlignVCenter | Qt.AlignLeft] * 2
         for label, position, alignment in zip(labels, positions, alignments):
@@ -103,11 +103,11 @@ class SelectionPage(AxoidPage):
             lbl.setAlignment(Qt.AlignCenter)
             self.left_display.addWidget(lbl, *position, alignment=alignment)
             
-        # Model and ROI_auto images
+        # Model and ROIs images
         for folder, (row, col) in zip(["raw", "ccreg", "warped"], [(1,1), (1,2), (1,3)]):
             self.left_display.addWidget(self.models[folder], row, col, alignment=Qt.AlignCenter)
             
-            self.left_display.addWidget(self.roi_autos[folder], row+1, col, alignment=Qt.AlignCenter)
+            self.left_display.addWidget(self.rois[folder], row+1, col, alignment=Qt.AlignCenter)
         
         # Dropdown choice for last row
         combo = QComboBox()
@@ -163,7 +163,7 @@ class SelectionPage(AxoidPage):
         """
         super().changeFrame(num)
         for folder in ["raw", "ccreg", "warped"]:
-            self.roi_autos[folder].changeFrame(int(num))
+            self.rois[folder].changeFrame(int(num))
             if isinstance(self.choice_widgets[folder], LabelImage):
                 self.choice_widgets[folder].changeFrame(int(num))
     

@@ -106,6 +106,11 @@ def main(args=None):
                                           "axoid_internal", "final")):
             raise RuntimeError("cannot start on model correction page without final outputs")
         goto = PAGE_MODEL
+    elif args.correction:
+        if not os.path.isdir(os.path.join(args.experiment, "output",
+                                          "axoid_internal", "final")):
+            raise RuntimeError("cannot start on frame correction page without final outputs")
+        goto = PAGE_CORRECTION
     else:
         goto = None
     
@@ -147,6 +152,11 @@ def parser():
             '--model',
             action="store_true",
             help="start the GUI on the model correction page"
+    )
+    parser.add_argument(
+            '--correction',
+            action="store_true",
+            help="start the GUI on the frame correction page"
     )
     args = parser.parse_args()
     
