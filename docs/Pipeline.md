@@ -18,13 +18,14 @@ It is applied to the entire experiment to get a stack of segmentations. Then, RO
 #### Fine tuning 
 Optionally, the network can be fine tuned on a few frames of the experiment to try and improve its performance on this single experiment only. In order to do this automatically, it needs a few frames with generated ground truths.
 
-For this, it will look for "similar frames" -frames that have the axons at the same place on the images- and take them as input for the fine tuning.  
+For this, it will look for "similar frames" -frames that have the axons at the same place on the images- and take them as input for the fine tuning. More practically, it will find clusters of frames with high cross-correlation.
+
 In order to create ground truths, it take the average of these frames (with possible smoothing if there are not many frames) and segment it using local thresholding. This segmentation will serve as ground truths for all of these similar frames. (Having *similar* frames is therefore useful to get a sharper projection, thus helping the segmentation, and then having the ROIs aligned with the ground truths).
 
 **Note:** the fine tuning is applied to the cross-correlation registered (*ccreg*) and optic flow warped (*warped*) data, but not on the raw data. For the raw data, the original network is directly used.
 
 ### Tracking
-The tracker works by creating an "internal model" -a model of how the axons should be on the frame- and then matching each frame to this model. This matching tries to link the ROIs of the frame to the axon of the model.  
+The tracker works by creating an "internal model" -a model of how the axons should be on the frame- and then matching each frame to this model. This matching tries to link the ROIs of the frame to the axons of the model.  
 
 ![](../images/tracking.png "Internal model tracking")
 
@@ -38,9 +39,9 @@ The model is then updated by iterating between matching a frame, then using the 
 This is repeated by passing a few time through the experiments (typically 1-5 times).
 
 #### Frame matching
-In order to match the ROIs of the frame with the axons of the model (with possibly appearing or disappearing ROIs), a cost is created and the Hungarian assignment method is used to find the optimal assignment.
+In order to match the ROIs of the frame with the axons of the model (with possibly appearing or disappearing ROIs), an assignment cost is created and the Hungarian assignment method is used to find the optimal assignment.
 
-The cost of assigning an ROI to an axon is actually defined using an inner assignment. It is the cost of assigning all other ROIs to all other axons, if we assumes that these two are the same.
+The cost of assigning an ROI to an axon is actually defined using an inner assignment. It is the cost of assigning all other ROIs to all other axons, if we assumes that these two are the same. This is repeated for each ROI/axon pairs to get all costs, and a final assignment is performed on these costs to get the final identities.
 
 #### Identity prediction
 Finally, after updating the model, it is kept as it is and each segmentation frame of the experiment is matched a last time with it, in order to get the final identities.
