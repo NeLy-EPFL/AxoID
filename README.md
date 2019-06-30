@@ -60,7 +60,7 @@ If the user intend to use the automatic call to warping, it requires the [`motio
 ## Features
 
 ### Train and optimize network
-`axoid.detection.deeplearning` contains code to train and test deep networks for the ROI detection. Models were based on the U-Net, but this can be modified as long as the output is the same format (an image with the same size as the input's, each pixel value is a logit).
+`axoid.detection.deeplearning` contains code to train and test deep networks for the ROI detection. Models were based on the U-Net, but this can be modified as long as it outputd the same format (an image with the same size as the input's, each pixel value is a logit).
 
 ### Create synthetic data
 `axoid.detection.synthetic` focuses on creating synthetic 2-photon experimental data. It allows to generate stack of raw images with their according detection and identity ground truths.  
@@ -69,17 +69,16 @@ This was mostly used for training networks.
 ### Fine tuning
 AxoID also explores fine tuning of the detection network on an experiment-by-experiment basis.  
 
-This consits in selecting a subset of the experiment's frames, and generating ground truths (manually, or through some automated fashion) for them. Then, the network is further trained on these frames in order to increase its detection performance for this single experiment, and potentially help it find the correct axons.
+This consists in selecting a subset of the experiment's frames, and generating ground truths (manually, or through some automated fashion) for them. Then, the network is further trained on these frames in order to increase its detection performance for this single experiment, and potentially help it find the correct axons.
 
-However, note that such a fine tuned network tend to overfit said experiment. Therefore, it is recommended to first keep some annotated frames as a validation set to stop the training when validation performance does not increase in order to detect and reduce overfitting of the training frames. Moreover, because the network will almost certainly overfit the experiment, it is only good for predicting this, and only this experiment. This process should then be repeated for each single experiment, or at least each fly.
+However, note that such a fine tuned network tend to overfit said experiment. Therefore, it is recommended to first keep some annotated frames as a validation set to stop the training when validation performance does not increase, to detect and reduce overfitting of the training frames. Moreover, because the network will almost certainly overfit the experiment, it is only good for predicting this, and only this experiment. This process should then be repeated for each single experiment, or at least each fly.
 
 ### Internal model tracking 
-(framework of building a model, then matching frames)
-The tracker framework is based on model matching: an *internal model* is created and updated based on the experimental frames, and each frame is then match to it in order to identify the axons.
+The tracker framework is based on model matching: an *internal model* is created and updated based on the experimental frames, and each frame is then matched to it in order to identify the axons.
 
 Here, the model represents a set of axon objects with some properties (as position on the image, shape, fluorescence intensity,...), and represents whate the tracker thinks the axons are, and how they are organized on the frame and relatively to each others.
 
-This is sort of a general framework in which the matching between the model and the frames can be implemented arbitrarily. In this current work, it is based on optimal assignments with custom cost functions, but an idea based on point set registration was explored (see [Coherent Point Drift](./docs/CPD.md)).
+This is sort of a general framework in which the matching between the model and the frames can be implemented arbitrarily. In this current work, it is based on optimal assignments with custom cost functions, but an idea based on point set registration was explored and could be developped (see [Coherent Point Drift](./docs/CPD.md)).
 
 ### Gui for correction and improvement
-`axoid.GUI` implements an interface where the user can explore and correct the output of the main AxoID pipeline, and is made with PyQt5.
+`axoid.GUI` implements an interface where the user can explore and correct the output of the main AxoID pipeline, made with PyQt5.
