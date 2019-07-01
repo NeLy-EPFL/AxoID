@@ -221,10 +221,10 @@ class CorrectionPage(AxoidPage):
         model_btn.clicked.connect(self.gobackModel)
         
         fn_vbox.addLayout(hbox)
-        fn_vbox.addWidget(annotation_btn)
+        fn_vbox.addWidget(finish_btn)
         fn_vbox.addWidget(model_btn)
         fn_vbox.addStretch(1)
-        fn_vbox.addWidget(finish_btn)
+        fn_vbox.addWidget(annotation_btn)
         
         self.right_title.setText("<b>Frame correction</b>")
         self.right_control.addWidget(QLabel("Axon identity"), alignment=Qt.AlignCenter)
