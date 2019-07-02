@@ -83,5 +83,96 @@ Similarly to last page, the tools in **8** allows for:
   * *Manual annotation*: **(not implemented, see below)** if results are not satisfying, go to the manual annotation page
 
 ### Manual annotation (not implemented)
+The last last page of the GUI was to be about manually annotating a few frames (selected by the user), fine tuning the network on them, and repeating the process until the detections are satisfactory. Then, the tracking and fluorescence extraction would be applied.
 
-![](../images/gui_annotation.png "Manual annotation mini-GUI")
+By lack of time, it was however not implemented. Instead, there is a small independent annotation tool in `axoid`, currently to be used in interactive Python. It is `ROIAnnotator` in `axoid.detection.deeplearning.finetuning`.
+
+`ROIAnnotator` is a custom class using OpenCV to display a small GUI where the user can draw the binary detection by hand. **Note**: as it requires drawing on a GUI, it also requires the `-X`or `-Y` flag for `ssh`. Moreover, it is better to launch it on your own computer rather than through `ssh` as it might be too slow.
+
+The notebook `fine_tuning_test.ipynb` shows an example of using this tool to make annotations for fine tuning. 
+Nonetheless, as the annotation had to be done outside of the notebook and the results loaded back to it, it is a bit messy, so below is an example of how to use this tool in Python.
+
+#### ROIAnnotator tool
+Here, the ROIAnnotator tool is presented in a short example.  
+**Note**: OpenCV 3.1.0.5 (requirements of *AxoID* in `setup.py`) does not work with this. Making another conda environment with `axoid`, but installing manually OpenCV 4.1.0 solved the problem. By lack of time, *AxoID* was not tested with OpenCV 4.1.0, so it is not possible to tell if OpenCV could be simply upgraded in the `setup.py`.
+
+First, load the network and the experimental data:
+```
+import torch
+
+from axoid.detection.deeplearning.model import load_model
+from axoid.detection.deeplearning.metric import get_dice_metric
+from axoid.utils.image import imread_to_float
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model = load_model("AxoID/model/", input_channels="RG", u_depth=4, 
+                   out1_channels=16, device=device)
+metrics = {"dice": get_dice_metric()}
+
+input_data = imread_to_float("exp/RGB.tif")
+```
+where `"AxoID/model/"` should be the path to the `model/` folder of this repository, and `"exp/RGB.tif"` the path to the experimental data as a RGB TIFF stack.
+
+Then, choose which frame you want to annotate. It can be randomly, or by visually inspecting the frames:
+```
+indices = [18, 120, 451, 678, 923]
+annot_input = input_data[indices]
+```
+
+Finally, start the annotator GUI on these frames:
+```
+from axoid.detection.deeplearning.finetuning import ROIAnnotator
+
+annotator = ROIAnnotator(annot_input)
+```
+This will open a window for the annotation. Note that the Python object `annotator` created above will keep all the information and can be used to reopen the window (using `annotator.main()`).
+
+![](../images/gui_annotation.png "ROIAnnotator: manual annotation tool in OpenCV")
+
+The left image in **1** is the current input frame, and is where the user can draw the ROIs. The right image **2** is a display of the resulting binary detection image. The informations in **3** display the current frame number being annotated over the total number of frame to annotate, as well as the number of ROIs present on the current annotation.
+
+The tools in **4** are:
+  * *Brush size*: size of the circular brush in pixels
+  * *ROI opacity*: opacity of the ROI over the input image in **1**, purely for display
+  * *Mode*
+    * *0:Brush*: enable the brush tool, letting the user "draw" the ROI with a paintbrush (see *Brush size* above)
+    * *1:Contour*: enable the contour tool, the user draw the contour of an ROI and it is automatically filled
+  * *Frame*: slider for navigating easily through the frames.
+
+Additionally, a few keys have bindings:
+  * *ESC*: escape quit the window. **Note**: closing the window with the top-right "x" is not sufficient, so use ESC instead (the window can be restarted by runnning `annotator.main()` in Python)
+  * *backspace*: undo the last change
+  * *enter*: go to the next frame, and terminate the annotation if it were the last one
+  * *1* to *9*: navigate the first frames (*1* to go to the first one, *2* the second one, etc.)
+  * *P*: go to the Previous frame
+  * *N*: go to the Next frame (does not terminate the annotation if last frame
+
+
+`ROIAnnotator` also allows for:
+  * append images to the annotator: `annotator.add(new_images)`
+  * manually set the segmentations of the annotator with existing ones: `annotator.set_segmentations(new_segs)`, which can be useful to reuse the network prediction and draw on them
+
+Then, when the annotation are finished, train and validation sets have to be made:
+```
+annot_segs = annotator.segmentations
+
+n_train = 3
+n_valid = len(indices) - n_train
+
+input_train = annot_input[:n_train]
+seg_train = annot_segs[:n_train]
+input_valid = annot_input[n_train:]
+seg_valid = annot_segs[n_train:]
+```
+
+And finally, the fine tuning can be launched on them:
+```
+from axoid.detection.deeplearning.data import compute_weights
+from axoid.detection.deeplearning.finetuning import fine_tune
+
+weights_train = compute_weights(seg_train, contour=False, separation=True)
+
+model_ft = fine_tune(model, input_train, seg_train, weights_train, input_valid, seg_valid, 
+                     data_aug=True, n_iter_max=1000, patience=200, batch_size=16, 
+                     learning_rate = 0.0005, verbose=1)
+```

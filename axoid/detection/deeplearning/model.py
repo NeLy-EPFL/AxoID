@@ -220,13 +220,14 @@ def load_model(model_dir, input_channels="RG", u_depth=4, out1_channels=16,
         The loaded model from the folder.
     """
     # Load the definition of the model (<=> its architecture)
-    sys.path.append(os.path.join(model_dir))
+    sys.path.insert(0, os.path.join(model_dir))
     from utils_model_save import CustomUNet
     
     # Load its state_dict
     model = CustomUNet(len(input_channels), u_depth=u_depth, 
                        out1_channels=out1_channels, device=device)
-    model.load_state_dict(torch.load(os.path.join(model_dir, "model_best.pth")))
+    model.load_state_dict(torch.load(os.path.join(model_dir, "model_best.pth"),
+                                     map_location=device))
     
     return model
 
