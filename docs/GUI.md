@@ -96,7 +96,7 @@ Nonetheless, as the annotation had to be done outside of the notebook and the re
 Here, the ROIAnnotator tool is presented in a short example.  
 **Note**: OpenCV 3.1.0.5 (requirements of *AxoID* in `setup.py`) does not work with this. Making another conda environment with `axoid`, but installing manually OpenCV 4.1.0 afterwards solved the problem. By lack of time, *AxoID* was not tested with OpenCV 4.1.0, so it is not possible to tell if OpenCV could be simply upgraded to 4.1.0 in `setup.py`.
 
-First, load the network and the experimental data:
+First, load the network, the dice metric, and the experimental data:
 ```python
 import torch
 
@@ -111,7 +111,7 @@ metrics = {"dice": get_dice_metric()}
 
 input_data = imread_to_float("exp/RGB.tif")
 ```
-where `"AxoID/model/"` should be the path to the `model/` folder of this repository, and `"exp/RGB.tif"` the path to the experimental data as a RGB TIFF stack.
+where `"AxoID/model/"` should be the path to the `model/` folder of this repository, and `"exp/RGB.tif"` the path to the experimental data as an RGB TIFF stack of images.
 
 Then, choose which frame you want to annotate. It can be randomly, or by visually inspecting the frames:
 ```python
@@ -136,7 +136,7 @@ The tools in **4** are:
   * *ROI opacity*: opacity of the ROI over the input image in **1**, purely for display
   * *Mode*
     * *0:Brush*: enable the brush tool, letting the user "draw" the ROI with a paintbrush (see *Brush size* above)
-    * *1:Contour*: enable the contour tool, the user draw the contour of an ROI and it is automatically filled
+    * *1:Contour*: enable the contour tool, the user draws the contour of an ROI which is automatically filled
   * *Frame*: slider for navigating easily through the frames.
 
 Additionally, a few keys have bindings:
@@ -145,14 +145,14 @@ Additionally, a few keys have bindings:
   * *enter*: go to the next frame, and terminate the annotation if it were the last one
   * *1* to *9*: navigate the first frames (*1* to go to the first one, *2* the second one, etc.)
   * *P*: go to the Previous frame
-  * *N*: go to the Next frame (does not terminate the annotation if last frame
+  * *N*: go to the Next frame (does not terminate the annotation if it is the last frame)
 
 
 `ROIAnnotator` also allows for:
-  * append images to the annotator: `annotator.add(new_images)`
-  * manually set the segmentations of the annotator with existing ones: `annotator.set_segmentations(new_segs)`, which can be useful to reuse the network prediction and draw on them
+  * appending images to the annotator: `annotator.add(new_images)`
+  * manually setting the segmentations of the annotator with existing ones: `annotator.set_segmentations(new_segs)`, which can be useful to reuse the network prediction and draw on them
 
-Then, when the annotation are finished, train and validation sets have to be made:
+Then, when the annotations are finished, train and validation sets have to be made:
 ```python
 annot_segs = annotator.segmentations
 
@@ -160,12 +160,12 @@ n_train = 3
 n_valid = len(indices) - n_train
 
 input_train = annot_input[:n_train]
-seg_train = annot_segs[:n_train]
 input_valid = annot_input[n_train:]
+seg_train = annot_segs[:n_train]
 seg_valid = annot_segs[n_train:]
 ```
 
-And finally, the fine tuning can be launched on them:
+And finally, the fine tuning can be launched on them (we create the pixel-wise weights, but disable the "contour" weighting as the contours might no be very precise):
 ```python
 from axoid.detection.deeplearning.data import compute_weights
 from axoid.detection.deeplearning.finetuning import fine_tune
