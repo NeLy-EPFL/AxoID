@@ -94,10 +94,10 @@ Nonetheless, as the annotation had to be done outside of the notebook and the re
 
 #### ROIAnnotator tool
 Here, the ROIAnnotator tool is presented in a short example.  
-**Note**: OpenCV 3.1.0.5 (requirements of *AxoID* in `setup.py`) does not work with this. Making another conda environment with `axoid`, but installing manually OpenCV 4.1.0 solved the problem. By lack of time, *AxoID* was not tested with OpenCV 4.1.0, so it is not possible to tell if OpenCV could be simply upgraded in the `setup.py`.
+**Note**: OpenCV 3.1.0.5 (requirements of *AxoID* in `setup.py`) does not work with this. Making another conda environment with `axoid`, but installing manually OpenCV 4.1.0 afterwards solved the problem. By lack of time, *AxoID* was not tested with OpenCV 4.1.0, so it is not possible to tell if OpenCV could be simply upgraded to 4.1.0 in `setup.py`.
 
 First, load the network and the experimental data:
-```
+```python
 import torch
 
 from axoid.detection.deeplearning.model import load_model
@@ -114,13 +114,13 @@ input_data = imread_to_float("exp/RGB.tif")
 where `"AxoID/model/"` should be the path to the `model/` folder of this repository, and `"exp/RGB.tif"` the path to the experimental data as a RGB TIFF stack.
 
 Then, choose which frame you want to annotate. It can be randomly, or by visually inspecting the frames:
-```
+```python
 indices = [18, 120, 451, 678, 923]
 annot_input = input_data[indices]
 ```
 
 Finally, start the annotator GUI on these frames:
-```
+```python
 from axoid.detection.deeplearning.finetuning import ROIAnnotator
 
 annotator = ROIAnnotator(annot_input)
@@ -153,7 +153,7 @@ Additionally, a few keys have bindings:
   * manually set the segmentations of the annotator with existing ones: `annotator.set_segmentations(new_segs)`, which can be useful to reuse the network prediction and draw on them
 
 Then, when the annotation are finished, train and validation sets have to be made:
-```
+```python
 annot_segs = annotator.segmentations
 
 n_train = 3
@@ -166,7 +166,7 @@ seg_valid = annot_segs[n_train:]
 ```
 
 And finally, the fine tuning can be launched on them:
-```
+```python
 from axoid.detection.deeplearning.data import compute_weights
 from axoid.detection.deeplearning.finetuning import fine_tune
 
