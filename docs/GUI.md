@@ -63,15 +63,20 @@ The left display is similar to the model correction page, with few adjustment:
     * ROI: redraw the ROI over the frame
   * last column is still for displaying different kind of data, with the **5** dropdown menu
 
-The slider **3** should be used to change the frame to be currently displayed and edited. The toolbox in **6** give access to the different tools to edit the frame, depending on the choice of **4**:
+The slider **3** should be used to change the frame to be currently displayed and edited. The toolbox in **6** give access to the different tools to edit the frame, depending on the choice of **4** (all tools are applied on the image in **2**):
   * identities: the identity frame is displayed, with the segmentations overlayed ontop as light gray. Detected ROIs without identity can still be used with the following tools:
     * *Reset*: reset the identity frame to the one in the `final/` folder
     * *Undo*: undo the last change performed on the frame
     * *Set ID*: enable the tool to assign identity. Use the dropdown menu right of it to select the identity that you want to assign, and then click on the ROI that you want to set its ID. It can be used to exchange the ID of two ROIs by sequentially setting their identities to the other's
     * *Discard*: enable the discarding tool. With this tool enabled, click on an ROI to discard it (setting its identity to 0 -background-)
-  * ROI: TODO + image
+  * ROI: the ROI contours are overlayed with the input. Following tools are avaialble (see image below):
+    * *Reset*, *Undo* & *Discard*: as above
+    * *Add ROI*: add an elliptic ROI of the identity chosen in the dropdown menu, and with parameter **W**, **H**, and **theta** (in pixels and degrees respectively). When all parameters are chosen, click on the image to put the ROI, centered over the mouse.
+    * *Draw ROI*: draw the contour of an ROI of the selected identity on the image. Note that the contour will automatically close between the first and last point.
 
 ![](../images/gui_correction_ROI.png "Frame correction page of the GUI in ROI edition mode")
+
+Modifying the identities or the ROIs adjust the other automatically.
 
 The display in **7** shows which frame has been edited (left), and which frame has been edited AND this edition has been applied to recompute the results (e.g. fluorescence) (right). Note that current version of the GUI (as of 1st July 2019) keeps edited frame in this display, even if the frame has been *reset* to the one in folder.
 
