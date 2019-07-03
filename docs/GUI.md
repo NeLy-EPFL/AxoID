@@ -67,12 +67,12 @@ The slider **3** should be used to change the frame to be currently displayed an
   * identities: the identity frame is displayed, with the segmentations overlayed ontop as light gray. Detected ROIs without identity can still be used with the following tools:
     * *Reset*: reset the identity frame to the one in the `final/` folder
     * *Undo*: undo the last change performed on the frame
-    * *Set ID*: enable the tool to assign identity. Use the dropdown menu right of it to select the identity that you want to assign, and then click on the ROI that you want to set its ID. It can be used to exchange the ID of two ROIs by sequentially setting their identities to the other's
-    * *Discard*: enable the discarding tool. With this tool enabled, click on an ROI to discard it (setting its identity to 0 -background-)
-  * ROI: the ROI contours are overlayed with the input. Following tools are avaialble (see image below):
+    * *Set ID*: enable the tool to assign identity. Use the dropdown menu right of it to select the identity that you want to assign, and then click on the ROI that you want to set. It can be used to exchange the ID of two ROIs by sequentially setting their identities to the other's.
+    * *Discard*: enable the discarding tool. With this tool enabled, click on an ROI to discard it (setting its identity to 0/background)
+  * ROI: the ROI contours are overlayed with the input. The following tools are available (see image below):
     * *Reset*, *Undo* & *Discard*: as above
-    * *Add ROI*: add an elliptic ROI of the identity chosen in the dropdown menu, and with parameter **W**, **H**, and **theta** (in pixels and degrees respectively). When all parameters are chosen, click on the image to put the ROI, centered over the mouse.
-    * *Draw ROI*: draw the contour of an ROI of the selected identity on the image. Note that the contour will automatically close between the first and last point.
+    * *Add ROI*: add an elliptic ROI of the identity chosen in the dropdown menu, and with parameter **W**, **H**, and **theta** (width/height in pixels and rotation angle in degrees). When all parameters are chosen, click on the image to put the ROI, centered over the mouse (it autmatically discard the previous ROI with th same identity).
+    * *Draw ROI*: draw the contour of an ROI of the selected identity on the image. Note that the contour will automatically close between the first and last points.
 
 ![](../images/gui_correction_ROI.png "Frame correction page of the GUI in ROI edition mode")
 
