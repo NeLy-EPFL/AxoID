@@ -39,6 +39,7 @@ IDLE = 0
 SETID = 1
 DISCARDING = 2
 ELLIPSE = 3
+DRAWING = 4
 
 
 class CorrectionPage(AxoidPage):
@@ -298,12 +299,12 @@ class CorrectionPage(AxoidPage):
             setID_btn.setToolTip("Click on an axon to set its identity")
             setID_btn.setCheckable(True)
             setID_btn.clicked[bool].connect(self.enableSetID)
-            setID_combox = QComboBox()
-            setID_combox.setFocusPolicy(Qt.ClickFocus)
-            setID_combox.addItems([str(i) for i in range(self.n_axons_max)])
-            setID_combox.activated[str].connect(self.edit_stack.set_new_id)
+            self.setID_combox = QComboBox()
+            self.setID_combox.setFocusPolicy(Qt.ClickFocus)
+            self.setID_combox.addItems([str(i) for i in range(self.n_axons_max)])
+            self.setID_combox.activated[str].connect(lambda str: self.edit_stack.set_new_id(str, SETID))
             setID_hbox.addWidget(setID_btn)
-            setID_hbox.addWidget(setID_combox)
+            setID_hbox.addWidget(self.setID_combox)
             discard_btn = QPushButton("Discard")
             discard_btn.setToolTip("Click on an axon to set its identity to 0 (background)")
             discard_btn.setCheckable(True)
@@ -324,12 +325,12 @@ class CorrectionPage(AxoidPage):
                                "W is width, H is height and θ orientation.")
             add_btn.setCheckable(True)
             add_btn.clicked[bool].connect(self.enableAddEllipse)
-            add_combox = QComboBox()
-            add_combox.setFocusPolicy(Qt.ClickFocus)
-            add_combox.addItems([str(i) for i in range(self.n_axons_max)])
-            add_combox.activated[str].connect(self.edit_stack.set_new_id)
+            self.add_combox = QComboBox()
+            self.add_combox.setFocusPolicy(Qt.ClickFocus)
+            self.add_combox.addItems([str(i) for i in range(self.n_axons_max)])
+            self.add_combox.activated[str].connect(lambda str: self.edit_stack.set_new_id(str, ELLIPSE))
             add_hbox.addWidget(add_btn)
-            add_hbox.addWidget(add_combox)
+            add_hbox.addWidget(self.add_combox)
             add_hbox2 = QHBoxLayout()
             def get_add_edit(min=1, max=999):
                 """Return a QLineEdit of length 3 for numbers-"""
@@ -359,12 +360,25 @@ class CorrectionPage(AxoidPage):
             add_edit_R.setText(str(0))
             add_edit_R.editingFinished.emit()
             add_hbox2.addWidget(add_edit_R)
+            draw_hbox = QHBoxLayout()
+            draw_btn = QPushButton("Draw ROI:")
+            draw_btn.setToolTip("Draw an ROI on the frame by drawing its contour")
+            draw_btn.setCheckable(True)
+            draw_btn.clicked[bool].connect(self.enableDrawROI)
+            self.draw_combox = QComboBox()
+            self.draw_combox.setFocusPolicy(Qt.ClickFocus)
+            self.draw_combox.addItems([str(i) for i in range(self.n_axons_max)])
+            self.draw_combox.activated[str].connect(lambda str: self.edit_stack.set_new_id(str, DRAWING))
+            draw_hbox.addWidget(draw_btn)
+            draw_hbox.addWidget(self.draw_combox)
             
             tool_layout.addWidget(discard_btn)
             tool_layout.addLayout(add_hbox)
             tool_layout.addLayout(add_hbox2)
+            tool_layout.addLayout(draw_hbox)
             self.tool_group.addButton(discard_btn)
             self.tool_group.addButton(add_btn)
+            self.tool_group.addButton(draw_btn)
         tool_groupbox.setLayout(tool_layout)
         self.tool_actions.replaceWidget(self.tool_actions_widget, tool_groupbox)
         self.tool_actions_widget.close()
@@ -409,6 +423,7 @@ class CorrectionPage(AxoidPage):
         """Enable the fusing tool."""
         if checked:
             self.edit_stack.change_mode(SETID)
+            self.edit_stack.set_new_id(self.setID_combox.currentText())
     
     def enableDiscard(self, checked):
         """Enable the discarding tool."""
@@ -419,6 +434,13 @@ class CorrectionPage(AxoidPage):
         """Enable the ellipse drawing tool."""
         if checked:
             self.edit_stack.change_mode(ELLIPSE)
+            self.edit_stack.set_new_id(self.add_combox.currentText())
+    
+    def enableDrawROI(self, checked):
+        """Enable the ROI drawing tool."""
+        if checked:
+            self.edit_stack.change_mode(DRAWING)
+            self.edit_stack.set_new_id(self.draw_combox.currentText())
     
     def addEditedFrames(self, index):
         """
@@ -650,11 +672,12 @@ class EditStack(LabelStack):
         self.choice = "identities"
         # List of list of changed frames
         self.changes = [[] for i in range(len(self.identities))]
-        self.new_id = 0  # new identity after setID
+        self.new_id = 1  # new identity after setID
         self.index = 0 
         self.n_axons = self.identities.max()
         self.cv2_overlay = np.zeros_like(self.identities[0])
         self.ellipse = {"W": 0, "H": 0, "R": 0}
+        self.vertices = []  # vertices of the poly in ROI drawing mode
         
         # Prepare the identity and ROI stack to be displayed
         self.id_stack = to_id_cmap(self.identities, cmap=ID_CMAP, vmax=self.n_axons)
@@ -691,6 +714,7 @@ class EditStack(LabelStack):
         """
         self.mode = mode
         self.cv2_overlay = np.zeros_like(self.cv2_overlay)
+        self.vertices = []
         if self.mode == ELLIPSE:
             self.setMouseTracking(True)
         else:
@@ -721,10 +745,12 @@ class EditStack(LabelStack):
             self.choice = choice
             self.stack = self.id_stack
             self.cv2_overlay = np.zeros_like(self.cv2_overlay)
+            self.vertices = []
         elif choice == "ROI":
             self.choice = choice
             self.stack = self.roi_stack
             self.cv2_overlay = np.zeros_like(self.cv2_overlay)
+            self.vertices = []
         self.update_()
     
     def changeEllipseParam(self, param, value):
@@ -775,6 +801,7 @@ class EditStack(LabelStack):
         """Reset the current frame correction."""
         self.changes[self.index].clear()   
         self.cv2_overlay = np.zeros_like(self.cv2_overlay)
+        self.vertices = []
         self.update_()
     
     def undo_last(self):
@@ -783,15 +810,20 @@ class EditStack(LabelStack):
             self.changes[self.index].pop()        
             self.update_()
     
-    def set_new_id(self, str_id):
+    def set_new_id(self, str_id, mode=None):
         """
-        Set the identity that will be applied in case of setting.
+        Set the new axon identity after an action.
         
         Parameters
         ----------
         str_id : str
             String of an ID number (e.g. str(1)), that can be casted as int.
+        mode : int (optional)
+            If given, will only change `new_id` if current mode is the same as 
+            mode.
         """
+        if mode is not None and self.mode != mode:
+            return
         # +1 because IDs actually start at 1
         self.new_id = int(str_id) + 1
     
@@ -830,10 +862,18 @@ class EditStack(LabelStack):
                         self.ellipse["R"], 0, 360, self.new_id, -1)
             self.changes[self.index].append(current_frame)
             self.editedFrame.emit(self.index)
+        # Start drawing an ROI
+        elif self.mode == DRAWING:
+            self.cv2_overlay = np.zeros_like(self.cv2_overlay)
+            self.x, self.y = x, y
+            cv2.line(self.cv2_overlay, (self.x, self.y), (x, y), 255, 1)
+            self.vertices = [(self.x, self.y)]
         # If clicked on an axon
-        elif self.seg_stack[self.index][y, x]:
+        elif self.seg_stack[self.index][y, x] or current_frame[y, x]:
             # Look for single region to set the id
-            tmp_labels = measure.label(self.seg_stack[self.index], connectivity=1)
+            tmp_labels = np.logical_or(self.seg_stack[self.index],
+                                       current_frame.astype(np.bool))
+            tmp_labels = measure.label(tmp_labels, connectivity=1)
             tmp_id = tmp_labels[y, x]
             
             if self.mode == SETID:
@@ -845,12 +885,42 @@ class EditStack(LabelStack):
         self.update_()
     
     def mouseMoveEvent(self, event):
-        """Called when the a mouse button is pressed and the mouse is moving."""
+        """Called when the mouse is moving."""
         x, y = self.event_coord(event)
         if self.mode == ELLIPSE:
             self.cv2_overlay = np.zeros_like(self.cv2_overlay)
             cv2.ellipse(self.cv2_overlay, (x, y), (self.ellipse["W"]//2, self.ellipse["H"]//2), 
                         self.ellipse["R"], 0, 360, 255)
-            image = overlay_mask(self.stack[self.index], self.cv2_overlay, 0.5, [255, 255, 255])
-            self.pixmap_ = array2pixmap(image)
-            super().update_()
+        elif self.mode == DRAWING:
+            cv2.line(self.cv2_overlay, (self.x, self.y), (x, y), 255, 1)
+            self.x, self.y = x, y
+            self.vertices.append((self.x, self.y))
+        else:
+            return
+        image = overlay_mask(self.stack[self.index], self.cv2_overlay, 0.5, [255, 255, 255])
+        self.pixmap_ = array2pixmap(image)
+        super().update_()
+    
+    def mouseReleaseEvent(self, event):
+        """Called when a mouse button is released over the image."""
+        x, y = self.event_coord(event)
+        if self.mode == IDLE or event.button() != Qt.LeftButton:
+            return
+        
+        if self.mode == DRAWING:
+            self.x, self.y = x, y
+            self.vertices.append((self.x, self.y))
+            vertices = np.array(self.vertices)
+            cv2.fillPoly(self.cv2_overlay, [vertices], 255)
+            self.vertices = []
+            
+            if len(self.changes[self.index]) > 0:
+                current_frame = self.changes[self.index][-1].copy()
+            else:
+                current_frame = self.identities[self.index].copy()
+            current_frame[current_frame == self.new_id] = 0
+            current_frame[self.cv2_overlay.astype(np.bool)] = self.new_id
+            self.changes[self.index].append(current_frame)
+            self.editedFrame.emit(self.index)
+            self.update_()
+            
