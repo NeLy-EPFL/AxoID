@@ -565,11 +565,6 @@ def process(args, name, input_data, fluo_data=None, finetuning=True):
         if args.timeit:
             start = time.time()
     
-    # Make folders and subfolders
-    os.makedirs(os.path.join(args.experiment, "output", "axoid_internal", name), exist_ok=True)
-    os.makedirs(os.path.join(args.experiment, "output", "GC6_auto", name), exist_ok=True)
-    os.makedirs(os.path.join(args.experiment, "output", "ROI_auto", name), exist_ok=True)
-    
     # Detect ROIs as a binary segmentation
     segmentations, rgb_proj, seg_proj = detection(args, name, input_data, finetuning)
     
@@ -618,6 +613,11 @@ def main(args=None):
     
     # Create output directory
     os.makedirs(os.path.join(args.experiment, "output", "axoid_internal"), exist_ok=True)
+    # Make folders and subfolders
+    for name in ["raw", "ccreg", "warped"]:
+        os.makedirs(os.path.join(args.experiment, "output", "axoid_internal", name), exist_ok=True)
+        os.makedirs(os.path.join(args.experiment, "output", "GC6_auto", name), exist_ok=True)
+        os.makedirs(os.path.join(args.experiment, "output", "ROI_auto", name), exist_ok=True)
     
     # Load and register the data
     rgb_input, ccreg_input, wrp_input, wrp_fluo = get_data(args)
