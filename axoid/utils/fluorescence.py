@@ -13,6 +13,7 @@ import pickle
 
 import numpy as np
 import matplotlib.pyplot as plt
+from skimage import io
 
 
 def get_fluorophores(rgb_stack, identities):
@@ -145,6 +146,11 @@ def save_fluorescence(path, tdtom, gcamp, dFF, dRR):
     # Save plots of the traces
     def plot_traces(traces, filename, ylabel, ylim=None):
         """Make a plot of the fluorescence traces."""
+        if traces.size == 0:
+            io.imsave(os.path.join(path, filename + ".png"),
+                      np.ones((100,400,3), np.uint8) * 255)
+            return
+        
         color="forestgreen"
         if ylim is not None:
             ymin, ymax = ylim
