@@ -264,6 +264,13 @@ def apply_cuts(cuts, model, identities=None):
     new_model_image = model.image.copy()
     if identities is not None:
         new_identities = identities.copy()
+        
+    # If no axons, do nothing
+    if len(model.axons) == 0:
+        if identities is None:
+            return new_model_image
+        else:
+            return new_model_image, new_identities
     
     # Create new ids for ROIs created after the cut
     new_ids = dict([(axon.id, []) for axon in model.axons])
