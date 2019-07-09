@@ -33,7 +33,7 @@ from .detection.deeplearning.test import predict_stack
 from .tracking.model import InternalModel
 from .tracking.utils import renumber_ids
 from .tracking.cutting import find_cuts, apply_cuts
-from .utils.image import imread_to_float, to_npint, gray2red
+from .utils.image import imread_to_float, to_npint
 from .utils.fluorescence import get_fluorophores, compute_fluorescence, save_fluorescence
 from .utils.ccreg import register_stack, shift_image
 # Add parent folder to path in order to access `motion_compensation_path`
