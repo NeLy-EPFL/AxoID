@@ -35,7 +35,7 @@ from .tracking.utils import renumber_ids
 from .tracking.cutting import find_cuts, apply_cuts
 from .utils.image import imread_to_float, to_npint, gray2red
 from .utils.fluorescence import get_fluorophores, compute_fluorescence, save_fluorescence
-from .utils.ccreg import register_stack
+from .utils.ccreg import register_stack, shift_image
 # Add parent folder to path in order to access `motion_compensation_path`
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # Command for optic flow warping through command line
@@ -85,38 +85,33 @@ def get_data(args):
     if args.verbose:
         print("\nGetting input data")
     rgb_path = os.path.join(args.experiment, "2Pimg", "RGB.tif")
-    ccreg_path = os.path.join(args.experiment, "2Pimg", "ccreg_RGB.tif")
     wrp_path = os.path.join(args.experiment, "2Pimg", "warped_RGB.tif")
     
+    ## raw data
     rgb_input = imread_to_float(rgb_path)
+    rgb_fluo = np.stack([
+            imread_to_float(os.path.join(args.experiment, "2Pimg", "tdTom.tif")),
+            imread_to_float(os.path.join(args.experiment, "2Pimg", "GC6fopt.tif")),
+            imread_to_float(os.path.join(args.experiment, "2Pimg", "GC6fopt.tif"))
+    ], axis=-1)
     
-    # If cc-registration is not enforced, look for existing warped data
-    if not args.force_ccreg and os.path.isfile(ccreg_path):
-        if args.verbose:
-            print("CC registered data found, loading it")
-        ccreg_input = imread_to_float(ccreg_path)
-    else:
-        if args.verbose:
-            print("Starting cross-correlation registration of input data")
-            if args.timeit:
-                start = time.time()
-                
-        ccreg_input = register_stack(rgb_input, ref_num=REF_NUM, channels=[0,1])
-        
-        if args.verbose and args.timeit:
-            print("CC registration took %d s." % (time.time() - start))
+    ## Always cross-correlation registered the data
+    if args.verbose:
+        print("Starting cross-correlation registration of input data")
+        if args.timeit:
+            start = time.time()
             
-        # Save the registered stack and temporal projection
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", Warning)
-            io.imsave(os.path.join(args.experiment, "2Pimg", "ccreg_RGB.tif"), 
-                      to_npint(ccreg_input))
-            io.imsave(os.path.join(args.experiment, "2Pimg", "AVG_ccreg_RGB.tif"), 
-                      to_npint(ccreg_input.mean(0)))
-            io.imsave(os.path.join(args.experiment, "2Pimg", "AVG_ccreg_tdTom.tif"), 
-                      to_npint(gray2red(ccreg_input[..., 0].mean(0))))
+    ccreg_input, rows, cols = register_stack(rgb_input, ref_num=REF_NUM,
+                                             channels=[0,1], return_shifts=True)
+    # Register the fluo data
+    ccreg_fluo = rgb_fluo.copy()
+    for i in range(len(ccreg_fluo)):
+        ccreg_fluo[i] = shift_image(rgb_fluo[i], rows[i], cols[i])
     
-    # If warping is not enforced, look for existing warped data
+    if args.verbose and args.timeit:
+        print("CC registration took %d s." % (time.time() - start))
+    
+    ## If warping is not enforced, look for existing warped data
     if not args.force_warp and os.path.isfile(wrp_path):
         if args.verbose:
             print("warped_RGB.tif found, loading it")
@@ -221,11 +216,13 @@ def get_data(args):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", Warning)
         io.imsave(os.path.join(outdir, "raw", "input.tif"), to_npint(rgb_input))
+        io.imsave(os.path.join(outdir, "raw", "input_fluo.tif"), to_npint(rgb_fluo))
         io.imsave(os.path.join(outdir, "ccreg", "input.tif"), to_npint(ccreg_input))
+        io.imsave(os.path.join(outdir, "ccreg", "input_fluo.tif"), to_npint(ccreg_fluo))
         io.imsave(os.path.join(outdir, "warped", "input.tif"), to_npint(wrp_input))
         io.imsave(os.path.join(outdir, "warped", "input_fluo.tif"), to_npint(wrp_fluo))
     
-    return rgb_input, ccreg_input, wrp_input, wrp_fluo
+    return rgb_input, rgb_fluo, ccreg_input, ccreg_fluo, wrp_input, wrp_fluo
 
 
 def _smooth_frame(frame):
@@ -620,14 +617,14 @@ def main(args=None):
         os.makedirs(os.path.join(args.experiment, "output", "ROI_auto", name), exist_ok=True)
     
     # Load and register the data
-    rgb_input, ccreg_input, wrp_input, wrp_fluo = get_data(args)
+    rgb_input, rgb_fluo, ccreg_input, ccreg_fluo, wrp_input, wrp_fluo = get_data(args)
     
     # Apply the full AxoID pipeline to the inputs
     #  Currently the calls are sequential. It should be possible to 
     #  parallelize them, except for the detection part as they would all 
     #  require access to the GPU (which could cause out of memory errors)
-    process(args, "raw", rgb_input, finetuning=False)
-    process(args, "ccreg", ccreg_input, finetuning=True)
+    process(args, "raw", rgb_input, rgb_fluo, finetuning=False)
+    process(args, "ccreg", ccreg_input, ccreg_fluo, finetuning=True)
     process(args, "warped", wrp_input, wrp_fluo, finetuning=True)
     
     if args.timeit:
