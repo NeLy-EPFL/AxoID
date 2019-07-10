@@ -337,7 +337,7 @@ class CorrectionPage(AxoidPage):
                 edit = QLineEdit()
                 edit.setMaxLength(3)
                 edit.setMaximumWidth(30)
-                edit.setValidator(QIntValidator(min, max))
+#                edit.setValidator(QIntValidator(min, max))
                 return edit
             add_hbox2.addWidget(QLabel("W:"))
             add_edit_W = get_add_edit()
