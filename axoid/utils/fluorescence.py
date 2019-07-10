@@ -162,6 +162,9 @@ def save_fluorescence(path, tdtom, gcamp, dFF, dRR):
                                  figsize=(8, 4 * len(traces)), facecolor='white', dpi=300)
         fig.subplots_adjust(left=0.2, right = 0.9, wspace = 0.3, hspace = 0.3)
         
+        # If only one ROI, still make an array of axes
+        if not isinstance(axes, np.ndarray):
+            axes = np.array([axes])
         for i, ax in enumerate(axes):
             ax.axhline(linestyle='dashed', color='gray', linewidth=0.5)
             ax.plot(traces[i], color, linewidth=1)
