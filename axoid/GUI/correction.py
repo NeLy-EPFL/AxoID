@@ -342,21 +342,21 @@ class CorrectionPage(AxoidPage):
             add_hbox2.addWidget(QLabel("W:"))
             add_edit_W = get_add_edit()
             add_edit_W.editingFinished.connect(
-                lambda: self.edit_stack.changeEllipseParam("W", int(add_edit_W.text())))
+                lambda: self.edit_stack.changeEllipseParam("W", add_edit_W.text()))
             add_edit_W.setText(str(10))
             add_edit_W.editingFinished.emit()
             add_hbox2.addWidget(add_edit_W)
             add_hbox2.addWidget(QLabel("H:"))
             add_edit_H = get_add_edit()
             add_edit_H.editingFinished.connect(
-                lambda: self.edit_stack.changeEllipseParam("H", int(add_edit_H.text())))
+                lambda: self.edit_stack.changeEllipseParam("H", add_edit_H.text()))
             add_edit_H.setText(str(20))
             add_edit_H.editingFinished.emit()
             add_hbox2.addWidget(add_edit_H)
             add_hbox2.addWidget(QLabel("θ:"))
             add_edit_R = get_add_edit(-90, 90)
-            add_edit_R.editingFinished.connect(   # note the minus sign because of OpenCV
-                lambda: self.edit_stack.changeEllipseParam("R", -int(add_edit_R.text())))
+            add_edit_R.editingFinished.connect(
+                lambda: self.edit_stack.changeEllipseParam("R", add_edit_R.text()))
             add_edit_R.setText(str(0))
             add_edit_R.editingFinished.emit()
             add_hbox2.addWidget(add_edit_R)
@@ -761,10 +761,16 @@ class EditStack(LabelStack):
         ----------
         param : str
             Indicates which parameter to change, in ["W", "H", "R"].
-        value : int
+        value : int, or can be casted to int
             The new value of the parameter
         """
-        self.ellipse[param] = value
+        try:
+            val_int = int(value)
+            if param == "R":  # inverse angle because of OpenCV
+                val_int = -val_int
+            self.ellipse[param] = val_int
+        except ValueError:
+            pass
     
     def update_(self):
         """Update stack and displayed QPixmap."""
