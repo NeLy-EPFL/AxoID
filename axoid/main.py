@@ -511,12 +511,12 @@ def save_results(args, name, input_data, identities, tdtom, gcamp, dFF, dRR):
             contour_list.append([])
             for n, id in enumerate(ids):
                 roi_img = (identities[i] == id)
-                if np.sum(roi_img) == 0:
-                    contour_list[i].append([])
-                    continue
                 _, contours, _ = cv2.findContours(roi_img.astype(np.uint8),
                                                   cv2.RETR_LIST,
                                                   cv2.CHAIN_APPROX_NONE)
+                if len(contours) == 0:
+                    contour_list[i].append([])
+                    continue
                 x, y = contours[0][:,0,0].max(), contours[0][:,0,1].min() # top-right corner of bbox
                 # Draw the contour and write the ROI id
                 cv2.drawContours(input_roi[i], contours, -1, (255,255,255), 1)
