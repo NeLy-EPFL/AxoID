@@ -36,6 +36,7 @@ IDLE = 0
 FUSING = 1
 DISCARDING = 2
 CUTDRAWING = 3
+SWAPPING = 4
 
 
 class ModelPage(AxoidPage):
@@ -140,7 +141,8 @@ class ModelPage(AxoidPage):
         general_vbox.addStretch(1)
         # Identity modifications
         ids_vbox = QVBoxLayout()
-        ids_subbox = QHBoxLayout()
+        ids_subbox = QVBoxLayout()
+        ids_row = QHBoxLayout()
         ids_groupbox = QGroupBox("Identities")
         fuse_btn = QPushButton("Fuse")
         fuse_btn.setToolTip("Select two identities and fuse them into a single one")
@@ -148,10 +150,16 @@ class ModelPage(AxoidPage):
         discard_btn = QPushButton("Discard")
         discard_btn.setToolTip("Discard (erase) the identity")
         discard_btn.clicked[bool].connect(self.enableDiscard)
-        for button in [fuse_btn, discard_btn]:
+        swap_btn = QPushButton("Swap IDs")
+        swap_btn.setToolTip("Swap the identities of two ROIs")
+        swap_btn.clicked[bool].connect(self.enableSwap)
+        for button in [fuse_btn, discard_btn, swap_btn]:
             button.setCheckable(True)
-            ids_subbox.addWidget(button)
             self.tool_buttongroup.addButton(button)
+        ids_row.addWidget(fuse_btn)
+        ids_row.addWidget(discard_btn)
+        ids_subbox.addLayout(ids_row)
+        ids_subbox.addWidget(swap_btn)
         ids_groupbox.setLayout(ids_subbox)
         ids_vbox.addWidget(ids_groupbox, alignment=Qt.AlignCenter)
         ids_vbox.addStretch(1)
@@ -279,6 +287,11 @@ class ModelPage(AxoidPage):
         """Enable the discarding tool."""
         if checked:
             self.model_new.change_mode(DISCARDING)
+    
+    def enableSwap(self, checked):
+        """Enable the swapping tool."""
+        if checked:
+            self.model_new.change_mode(SWAPPING)
     
     def enableDrawCut(self, checked):
         """Enable the cut-drawing tool."""
@@ -500,9 +513,10 @@ class ModelImage(LabelImage):
         self.cv2_overlay = np.zeros_like(self.models[-1])
         # Following are for transfering changes to the entire experiment
         #  - for fuse/discard: tuple of size 2 with old and new id
+        #  - for swapping: tuple of size 2 with both id to exchange
         #  - for cuts: tuple of size 3 with axon_id to be cut, tuple of cut's parameter,
         #    and the new id
-        self.changes = []
+        self.changes = []  # list of tuple (MODE, data)
         self._changes_num = []  # number of "changes" per action (useful for undo)
         
         rgb_image = to_id_cmap(image, cmap=ID_CMAP)
@@ -569,7 +583,7 @@ class ModelImage(LabelImage):
             new_model[coords[:,0], coords[:,1]] = new_id
             self.update_(new_model)
             
-            self.changes.append((axon_id, (n,d), new_id))
+            self.changes.append((CUTDRAWING, (axon_id, (n,d), new_id)))
             self._changes_num.append(1)
     
     def change_mode(self, mode):
@@ -584,6 +598,29 @@ class ModelImage(LabelImage):
         self.cv2_overlay = np.zeros_like(self.cv2_overlay)
         self.cut_points = None
         self.mode = mode
+    
+    def swap_ids(self, image, id1, id2):
+        """
+        Swap the identity of the two ROIs.
+        
+        Parameters
+        ----------
+        image : ndarray
+            Identity image with the ROIs.
+        id1 : int
+            Identity of the first ROI.
+        id2 : int
+            Identity of the second ROI.
+        
+        Returns
+        -------
+        out : ndarray
+            New identity image with the two swapped identites.
+        """
+        out = image.copy()
+        out[image == id1] = id2
+        out[image == id2] = id1
+        return out
     
     def event_coord(self, event):
         """Return the x and y coordinate of the event w.r.t. the image."""
@@ -612,7 +649,7 @@ class ModelImage(LabelImage):
         x, y = self.event_coord(event)
         if self.mode == IDLE or not self.drawing:
             return
-        elif self.mode in [FUSING, DISCARDING]:
+        elif self.mode in [FUSING, DISCARDING, SWAPPING]:
             cv2.line(self.cv2_overlay, (self.x, self.y), (x, y), 1, 1)
             self.x, self.y = x, y
         elif self.mode == CUTDRAWING:
@@ -625,8 +662,8 @@ class ModelImage(LabelImage):
         x, y = self.event_coord(event)
         if self.mode == IDLE or event.button() != Qt.LeftButton:
             return
-        elif self.mode in [FUSING, DISCARDING]:
-            # Fuse or discard all label which have been selected
+        elif self.mode in [FUSING, DISCARDING, SWAPPING]:
+            # Process all label which have been selected
             new_model = self.models[-1].copy()
             ids = np.unique(self.models[-1][self.cv2_overlay.astype(np.bool)])
             ids = ids[ids != 0]
@@ -640,9 +677,15 @@ class ModelImage(LabelImage):
                         new_id = 0
                     if id != new_id:
                         new_model[new_model == id] = new_id
-                        self.changes.append((id, new_id))
+                        self.changes.append((self.mode, (id, new_id)))
                         change_counter += 1
                 self._changes_num.append(change_counter)
+                self.models.append(new_model)
+            elif self.mode == SWAPPING and len(ids) == 2:
+                id1, id2 = ids
+                new_model = self.swap_ids(new_model, id1, id2)
+                self.changes.append((SWAPPING, (id1, id2)))
+                self._changes_num.append(1)
                 self.models.append(new_model)
             
             self.cv2_overlay = np.zeros_like(self.cv2_overlay)
@@ -672,13 +715,15 @@ class ModelImage(LabelImage):
             New identity image with the applied changes.
         """
         out_frame = id_frame.copy()
-        for change in self.changes:
+        for mode, change in self.changes:
             roi_img = out_frame == change[0]
             if np.sum(roi_img) == 0:
                 continue
-            if len(change) == 2:  # new id
+            if mode in [FUSING, DISCARDING]:  # new id
                 out_frame[roi_img] = change[1]
-            elif len(change) == 3:  # cut
+            elif mode == SWAPPING:  # id swap
+                out_frame = self.swap_ids(out_frame, change[0], change[1])
+            elif mode == CUTDRAWING:  # cut
                 n, d = change[1]
                 coords = get_cut_pixels(n, d, roi_img)
                 out_frame[coords[:,0], coords[:,1]] = change[2]

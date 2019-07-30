@@ -40,6 +40,7 @@ This page allows the user to modify the tracker model displayed in **2**, using 
   * Identities
     * *Fuse*: enable the fusing tool. In this mode, drawing over the model displays a red line which automatically select the ROIs that it has been drawn upon. When the left mouse button is released, all selected ROIs will be fused, effectively being set to the same ID. E.g.: if you want to fuse ROI 0 and ROI 1, select this tool, then draw a line passing over the two ROIs and then release the button
     * *Discard*: enable the discard tool. In this mode, drawing over an ROI will also select it, and when the left mouse button is released, all selected ROIs will be discarded (effectively setting them to background)
+    * *Swap IDs*: enable the swapping tool. In this mode, drawing over 2 ROIs will swap their identities when the mouse button is released.
   * Cutting
     * *Draw cut*: enable the drawing of a cut. In this mode, the user can draw a "cut" on the model, a simple segment representing the cutting border of the ROI. It requires cutting one and only one ROI (if the cut is valid, the shown red segment will stay on the image as long as the *Draw cut* tool is selected).
     * *Apply cut*: apply the drawn cut to the model image, effectively making two ROIs out of the cutted one. This only works if a valid cut is drawn on the current model image
